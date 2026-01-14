@@ -1,0 +1,102 @@
+.petran-login .main-container {
+  display: flex;
+  min-height: 100vh;
+  font-family: var(--font-sans, system-ui, -apple-system, Segoe UI, Roboto, Arial);
+}
+
+.petran-login .brand-side {
+  flex: 1.2;
+  background-color: #121212;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  padding: 4rem;
+}
+
+.petran-login .tagline {
+  font-size: 3rem;
+  margin-top: 2rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.petran-login .tagline span { color: var(--primary); }
+
+.petran-login .description {
+  margin-top: 1.5rem;
+  font-size: 1.1rem;
+  color: #ccc;
+  max-width: 450px;
+}
+
+.petran-login .action-side {
+  flex: 1;
+  background-color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.petran-login .form-container { width: 100%; max-width: 400px; }
+
+.petran-login h2 { margin-bottom: 1rem; color: #121212; font-size: 1.8rem; }
+
+.petran-login .btn-primary {
+  width: 100%;
+  padding: 1.2rem;
+  background-color: var(--primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 1rem;
+  transition: 0.3s;
+}
+
+.petran-login .btn-primary:hover { filter: brightness(0.9); transform: scale(1.02); }
+
+.petran-login .divider {
+  margin: 2rem 0;
+  text-align: center;
+  border-bottom: 1px solid #ddd;
+  line-height: 0.1em;
+}
+
+.petran-login .divider span { background: #fff; padding: 0 10px; color: #888; font-size: 0.8rem; }
+
+.petran-login .btn-outline {
+  width: 100%;
+  padding: 1rem;
+  background: transparent;
+  border: 2px solid #121212;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.petran-login .btn-dark {
+  width: 100%;
+  padding: 1rem;
+  background-color: #121212;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.petran-login .input-group { margin-bottom: 1.2rem; display: flex; flex-direction: column; }
+.petran-login .input-group label { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; }
+.petran-login .input-group input { padding: 0.8rem; border: 1px solid #ddd; border-radius: 6px; }
+
+.petran-login .back-link {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
