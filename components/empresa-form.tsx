@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,6 +19,7 @@ interface FormData {
   productos_transportados: string
   telefono_contacto: string
   email_contacto: string
+  direccion: string
   prioridad_frio: boolean
   prioridad_carroceria: boolean
   prioridad_estructura: boolean
@@ -26,6 +28,7 @@ interface FormData {
 }
 
 export function EmpresaForm() {
+  const router = useRouter()
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formData, setFormData] = useState<FormData>({
@@ -35,6 +38,7 @@ export function EmpresaForm() {
     productos_transportados: "",
     telefono_contacto: "",
     email_contacto: "",
+    direccion: "",
     prioridad_frio: false,
     prioridad_carroceria: false,
     prioridad_estructura: false,
@@ -58,36 +62,29 @@ export function EmpresaForm() {
     try {
       const response = await fetch("/api/empresas", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
       })
 
       const result = await response.json()
 
       if (response.ok) {
+        const empresaId = result?.id
+
         toast({
           title: "Empresa registrada",
           description: `${formData.nombre} ha sido registrada exitosamente.`,
         })
-        // Reset form
-        setFormData({
-          nombre: "",
-          rut: "",
-          rubro: "",
-          productos_transportados: "",
-          telefono_contacto: "",
-          email_contacto: "",
-          prioridad_frio: false,
-          prioridad_carroceria: false,
-          prioridad_estructura: false,
-          prioridad_camion: false,
-          prioridad_acople: false,
-        })
-      } else {
-        throw new Error(result.error || "Error al registrar empresa")
+
+        if (!empresaId) {
+          throw new Error("No se recibió id desde el servidor")
+        }
+
+        router.push(`/cliente/flota?empresaId=${empresaId}`)
+        return
       }
+
+      throw new Error(result?.error || "Error al registrar empresa")
     } catch (error) {
       toast({
         title: "Error",
@@ -107,7 +104,6 @@ export function EmpresaForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Información Básica */}
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -143,6 +139,17 @@ export function EmpresaForm() {
                 value={formData.rubro}
                 onChange={handleInputChange}
                 placeholder="Ej: Transporte de carga refrigerada"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="direccion">Dirección</Label>
+              <Input
+                id="direccion"
+                name="direccion"
+                value={formData.direccion}
+                onChange={handleInputChange}
+                placeholder="Ej: Av. Siempre Viva 123"
               />
             </div>
 
@@ -185,7 +192,6 @@ export function EmpresaForm() {
             </div>
           </div>
 
-          {/* Prioridades de Inspección */}
           <div className="space-y-3 pt-4 border-t">
             <h3 className="font-semibold text-lg">Prioridades de Inspección</h3>
             <p className="text-sm text-muted-foreground">Seleccione las categorías prioritarias para esta empresa</p>
