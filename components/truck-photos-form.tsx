@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast"
 type Truck = {
   id: number
   patente: string
+  foto_url?: string | null // si tu GET /api/fleet trae foto_url, esto sirve
 }
 
 type PhotoState = {
@@ -28,7 +29,11 @@ export function TruckPhotosForm() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  // key = truckId
   const [photosByTruckId, setPhotosByTruckId] = useState<Record<number, PhotoState | undefined>>({})
+
+  // refs para disparar el file picker por camión
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
 
   // ---- cargar camiones por empresa ----
   useEffect(() => {
@@ -41,7 +46,7 @@ export function TruckPhotosForm() {
       try {
         setLoading(true)
 
-        // ✅ ahora leemos desde /api/fleet
+        // usamos /api/fleet (como quedamos)
         const res = await fetch(`/api/fleet?empresaId=${empresaId}`)
         const data = await res.json()
 
@@ -62,6 +67,7 @@ export function TruckPhotosForm() {
 
   // ---- helpers ----
   const totalRequired = trucks.length
+
   const totalSelected = useMemo(() => {
     return trucks.reduce((acc, t) => acc + (photosByTruckId[t.id] ? 1 : 0), 0)
   }, [trucks, photosByTruckId])
@@ -80,8 +86,10 @@ export function TruckPhotosForm() {
       return
     }
 
+    // preview local
     const previewUrl = URL.createObjectURL(file)
 
+    // cleanup preview anterior
     const prev = photosByTruckId[truckId]
     if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
 
@@ -100,6 +108,23 @@ export function TruckPhotosForm() {
       delete copy[truckId]
       return copy
     })
+
+    // opcional: limpiar el input
+    const input = fileInputRefs.current[truckId]
+    if (input) input.value = ""
+  }
+
+  const openPicker = (truckId: number) => {
+    const input = fileInputRefs.current[truckId]
+    if (!input) {
+      toast({
+        title: "Error",
+        description: "No se pudo abrir el selector de archivos.",
+        variant: "destructive",
+      })
+      return
+    }
+    input.click()
   }
 
   // cleanup previews on unmount
@@ -137,6 +162,7 @@ export function TruckPhotosForm() {
         const photo = photosByTruckId[t.id]
         if (!photo) continue
 
+        // placeholder (hasta storage real)
         const fakeUrl = `pending-upload://${t.patente}`
 
         const res = await fetch("/api/truck-photo", {
@@ -169,7 +195,9 @@ export function TruckPhotosForm() {
     }
   }
 
+  // ---- render ----
   if (loading) return <div className="p-4">Cargando camiones...</div>
+
   if (!empresaId) return <div className="p-4 text-red-600">Falta empresaId en la URL. Vuelve a Flota.</div>
 
   return (
@@ -190,19 +218,33 @@ export function TruckPhotosForm() {
 
             return (
               <div key={t.id} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-semibold">Patente</p>
                     <p className="text-sm text-muted-foreground">{t.patente}</p>
+
+                    {/* opcional: si ya hay una URL guardada */}
+                    {t.foto_url ? (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Ya existe una foto registrada en el sistema.
+                      </p>
+                    ) : null}
                   </div>
 
-                  {photo ? (
-                    <Button type="button" variant="outline" onClick={() => handleRemove(t.id)}>
-                      Quitar
+                  <div className="flex gap-2">
+                    {photo ? (
+                      <Button type="button" variant="outline" onClick={() => handleRemove(t.id)}>
+                        Quitar
+                      </Button>
+                    ) : null}
+
+                    <Button type="button" onClick={() => openPicker(t.id)}>
+                      {photo ? "Cambiar foto" : "Seleccionar foto"}
                     </Button>
-                  ) : null}
+                  </div>
                 </div>
 
+                {/* Preview */}
                 {photo ? (
                   <div className="relative w-full h-56 rounded-md overflow-hidden border">
                     <Image src={photo.previewUrl} alt={`Foto ${t.patente}`} fill className="object-contain bg-white" />
@@ -211,7 +253,21 @@ export function TruckPhotosForm() {
                   <div className="text-sm text-muted-foreground">Aún no seleccionas una foto.</div>
                 )}
 
-                <input type="file" accept="image/*" onChange={(e) => handlePickFile(t.id, e.target.files?.[0] ?? null)} />
+                {/* Input oculto */}
+                <input
+                  ref={(el) => {
+                    fileInputRefs.current[t.id] = el
+                  }}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handlePickFile(t.id, e.target.files?.[0] ?? null)}
+                />
+
+                {/* mostrar nombre archivo si existe */}
+                {photo?.file?.name ? (
+                  <p className="text-xs text-muted-foreground">Archivo: {photo.file.name}</p>
+                ) : null}
               </div>
             )
           })
@@ -222,11 +278,12 @@ export function TruckPhotosForm() {
         </Button>
 
         <p className="text-xs text-muted-foreground">
-          Nota: por ahora se guarda un marcador (pending-upload://...). Cuando definan dónde almacenar imágenes, se
-          reemplaza por subida real + URL.
+          Nota: por ahora se guarda un marcador (pending-upload://...). Cuando definan almacenamiento, se reemplaza por
+          subida real + URL.
         </p>
       </CardContent>
     </Card>
   )
 }
+
 
