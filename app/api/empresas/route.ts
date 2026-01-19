@@ -11,6 +11,7 @@ export async function POST(request: NextRequest) {
       productos_transportados,
       telefono_contacto,
       email_contacto,
+      direccion,
       prioridad_frio,
       prioridad_carroceria,
       prioridad_estructura,
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
       .input("productos_transportados", sql.VarChar(sql.MAX), productos_transportados || null)
       .input("telefono_contacto", sql.VarChar(20), telefono_contacto || null)
       .input("email_contacto", sql.VarChar(150), email_contacto || null)
+      .input("direccion", sql.VarChar(300), direccion || null)
       .input("prioridad_frio", sql.Bit, prioridad_frio ? 1 : 0)
       .input("prioridad_carroceria", sql.Bit, prioridad_carroceria ? 1 : 0)
       .input("prioridad_estructura", sql.Bit, prioridad_estructura ? 1 : 0)
@@ -41,14 +43,14 @@ export async function POST(request: NextRequest) {
       .query(`
         INSERT INTO empresas (
           nombre, rut, rubro, productos_transportados, 
-          telefono_contacto, email_contacto,
+          telefono_contacto, email_contacto, direccion,
           prioridad_frio, prioridad_carroceria, prioridad_estructura,
           prioridad_camion, prioridad_acople
         )
         OUTPUT INSERTED.id
         VALUES (
           @nombre, @rut, @rubro, @productos_transportados,
-          @telefono_contacto, @email_contacto,
+          @telefono_contacto, @email_contacto, @direccion,
           @prioridad_frio, @prioridad_carroceria, @prioridad_estructura,
           @prioridad_camion, @prioridad_acople
         )
