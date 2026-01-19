@@ -1,21 +1,17 @@
-import { Suspense } from "react"
-import { TruckPhotosForm } from "@/components/truck-photos-form"
+import { EmpresaForm } from "@/components/empresa-form"
 
-export default function FotosPage() {
+export default function ClientePage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
       <div className="max-w-3xl mx-auto">
         <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold text-slate-900 mb-2">Fotos de los Camiones</h1>
-          <p className="text-slate-600">
-            Sube 1 foto por camión. Idealmente una vista 3/4 donde se vea el camión completo.
-          </p>
+          <h1 className="text-4xl font-bold text-slate-900 mb-2">Registro de Empresas</h1>
+          <p className="text-slate-600">Complete el formulario para registrar una nueva empresa cliente</p>
         </div>
 
-        <Suspense fallback={<div className="p-4">Cargando formulario...</div>}>
-          <TruckPhotosForm />
-        </Suspense>
+        <EmpresaForm />
       </div>
     </main>
   )
 }
+
