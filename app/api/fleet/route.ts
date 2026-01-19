@@ -51,8 +51,11 @@ export async function POST(req: Request) {
     const insertedIds: number[] = []
     const duplicates: string[] = []
 
-    for (const patente of lot.patentes as string[]) {
-      // evita duplicados por proveedor+patente (aunque no tengas indice, es útil)
+    for (const raw of lot.patentes as string[]) {
+      const patente = String(raw || "").trim().toUpperCase()
+      if (!patente) continue
+
+      // evita duplicados por proveedor+patente
       const exists = await pool
         .request()
         .input("proveedor_id", sql.Int, proveedorId)
@@ -93,7 +96,40 @@ export async function POST(req: Request) {
       duplicates,
     })
   } catch (e) {
-    console.error("[fleet] error:", e)
+    console.error("[fleet][POST] error:", e)
     return NextResponse.json({ error: "Error al registrar flota" }, { status: 500 })
+  }
+}
+
+// ✅ NUEVO: listar camiones por empresaId (JOIN proveedores → camiones)
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const empresaId = Number(searchParams.get("empresaId"))
+
+    if (!empresaId || Number.isNaN(empresaId)) {
+      return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
+    }
+
+    const pool = await getPool()
+
+    const result = await pool
+      .request()
+      .input("empresa_id", sql.Int, empresaId)
+      .query(`
+        SELECT c.id, c.patente, c.marca, c.modelo, c.anio, c.carroceria
+        FROM camiones c
+        INNER JOIN proveedores p ON p.id = c.proveedor_id
+        WHERE p.empresa_id = @empresa_id
+        ORDER BY c.created_at DESC
+      `)
+
+    return NextResponse.json({
+      success: true,
+      trucks: result.recordset,
+    })
+  } catch (e) {
+    console.error("[fleet][GET] error:", e)
+    return NextResponse.json({ error: "Error al obtener camiones" }, { status: 500 })
   }
 }

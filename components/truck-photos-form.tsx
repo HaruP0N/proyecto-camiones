@@ -28,7 +28,6 @@ export function TruckPhotosForm() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  // key = truckId
   const [photosByTruckId, setPhotosByTruckId] = useState<Record<number, PhotoState | undefined>>({})
 
   // ---- cargar camiones por empresa ----
@@ -41,7 +40,9 @@ export function TruckPhotosForm() {
     ;(async () => {
       try {
         setLoading(true)
-        const res = await fetch(`/api/trucks?empresaId=${empresaId}`)
+
+        // ✅ ahora leemos desde /api/fleet
+        const res = await fetch(`/api/fleet?empresaId=${empresaId}`)
         const data = await res.json()
 
         if (!res.ok) throw new Error(data?.error || "Error al cargar camiones")
@@ -70,7 +71,6 @@ export function TruckPhotosForm() {
   const handlePickFile = (truckId: number, file: File | null) => {
     if (!file) return
 
-    // validación básica
     if (!file.type.startsWith("image/")) {
       toast({
         title: "Archivo inválido",
@@ -80,14 +80,10 @@ export function TruckPhotosForm() {
       return
     }
 
-    // crea preview local
     const previewUrl = URL.createObjectURL(file)
 
-    // si ya había un preview, lo revocamos para evitar leaks
     const prev = photosByTruckId[truckId]
-    if (prev?.previewUrl) {
-      URL.revokeObjectURL(prev.previewUrl)
-    }
+    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl)
 
     setPhotosByTruckId((p) => ({
       ...p,
@@ -137,13 +133,10 @@ export function TruckPhotosForm() {
 
     setSaving(true)
     try {
-      // Aquí, mientras no haya storage real, guardaremos un placeholder por camión.
-      // Luego esto lo cambiaremos a: subir archivo → obtener URL real → guardar.
       for (const t of trucks) {
         const photo = photosByTruckId[t.id]
         if (!photo) continue
 
-        // placeholder: puedes cambiarlo por una ruta estática si quieres
         const fakeUrl = `pending-upload://${t.patente}`
 
         const res = await fetch("/api/truck-photo", {
@@ -164,7 +157,6 @@ export function TruckPhotosForm() {
         description: "Fotos registradas (pendiente subir a storage real).",
       })
 
-      // Si quieres, aquí puedes mandar al login, o a “confirmación”
       router.push("/login")
     } catch (err) {
       toast({
@@ -177,14 +169,8 @@ export function TruckPhotosForm() {
     }
   }
 
-  // ---- render ----
-  if (loading) {
-    return <div className="p-4">Cargando camiones...</div>
-  }
-
-  if (!empresaId) {
-    return <div className="p-4 text-red-600">Falta empresaId en la URL. Vuelve a Flota.</div>
-  }
+  if (loading) return <div className="p-4">Cargando camiones...</div>
+  if (!empresaId) return <div className="p-4 text-red-600">Falta empresaId en la URL. Vuelve a Flota.</div>
 
   return (
     <Card className="shadow-xl">
@@ -219,23 +205,13 @@ export function TruckPhotosForm() {
 
                 {photo ? (
                   <div className="relative w-full h-56 rounded-md overflow-hidden border">
-                    {/* Preview local (blob:) */}
-                    <Image
-                      src={photo.previewUrl}
-                      alt={`Foto ${t.patente}`}
-                      fill
-                      className="object-contain bg-white"
-                    />
+                    <Image src={photo.previewUrl} alt={`Foto ${t.patente}`} fill className="object-contain bg-white" />
                   </div>
                 ) : (
                   <div className="text-sm text-muted-foreground">Aún no seleccionas una foto.</div>
                 )}
 
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={(e) => handlePickFile(t.id, e.target.files?.[0] ?? null)}
-                />
+                <input type="file" accept="image/*" onChange={(e) => handlePickFile(t.id, e.target.files?.[0] ?? null)} />
               </div>
             )
           })
