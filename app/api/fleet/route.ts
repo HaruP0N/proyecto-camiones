@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { getPool, sql } from "@/lib/azure-sql"
 
-/* ======================================================
-   POST /api/fleet
-   - Nuevo: { empresaId, camiones: [] }
-   - Antiguo: { empresaId, lot: { carroceria, patentes[] } }
-   ====================================================== */
+const ALLOWED_CARROCERIAS = new Set([
+  "CAMION_CON_CARRO",
+  "CARRO_REEFER",
+  "CAMARA_DE_FRIO",
+  "CAMION_PAQUETERO",
+])
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -15,21 +17,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
     }
 
-    const camionesArray = Array.isArray(body?.camiones) ? body.camiones : null
-    const lot = body?.lot
+    const camiones = Array.isArray(body?.camiones) ? body.camiones : null
+    const items: any[] = []
 
-    const items: Array<{
-      patente: string
-      carroceria: string
-      marca: string | null
-      modelo: string | null
-      anio: number | null
-      tipo: string
-    }> = []
-
-    // -------- FORMATO NUEVO --------
-    if (camionesArray && camionesArray.length > 0) {
-      for (const t of camionesArray as any[]) {
+    if (camiones && camiones.length > 0) {
+      for (const t of camiones) {
         const patente = String(t?.patente || "")
           .trim()
           .toUpperCase()
@@ -37,55 +29,27 @@ export async function POST(req: Request) {
 
         if (!patente) continue
 
-        items.push({
-          patente,
-          carroceria: String(t?.carroceria || ""),
-          marca: t?.marca ? String(t.marca).trim() : null,
-          modelo: t?.modelo ? String(t.modelo).trim() : null,
-          anio: Number.isInteger(Number(t?.anio)) ? Number(t.anio) : null,
-          tipo: String(t?.tipo || "camion"),
-        })
-      }
-
-      if (items.length === 0) {
-        return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
-      }
-
-      if (items.some((x) => !x.carroceria)) {
-        return NextResponse.json({ error: "carroceria es requerida por camión" }, { status: 400 })
-      }
-    }
-    // -------- FORMATO ANTIGUO (COMPATIBILIDAD) --------
-    else {
-      if (!lot?.carroceria) {
-        return NextResponse.json({ error: "carroceria es requerida" }, { status: 400 })
-      }
-      if (!Array.isArray(lot?.patentes) || lot.patentes.length === 0) {
-        return NextResponse.json({ error: "patentes es requerida" }, { status: 400 })
-      }
-
-      for (const raw of lot.patentes as string[]) {
-        const patente = String(raw || "")
-          .trim()
-          .toUpperCase()
-          .replace(/\s+/g, "")
-
-        if (!patente) continue
+        if (!ALLOWED_CARROCERIAS.has(t.carroceria)) {
+          return NextResponse.json(
+            { error: `Carrocería inválida: ${t.carroceria}` },
+            { status: 400 }
+          )
+        }
 
         items.push({
           patente,
-          carroceria: String(lot.carroceria),
-          marca: null,
-          modelo: null,
-          anio: null,
-          tipo: "camion",
+          carroceria: t.carroceria,
+          marca: t.marca ?? null,
+          modelo: t.modelo ?? null,
+          anio: Number.isInteger(Number(t.anio)) ? Number(t.anio) : null,
         })
       }
+    } else {
+      return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
     }
 
     const pool = await getPool()
 
-    // -------- PROVEEDOR DEFAULT --------
     const provRes = await pool
       .request()
       .input("empresa_id", sql.Int, empresaId)
@@ -96,7 +60,7 @@ export async function POST(req: Request) {
         ORDER BY created_at DESC
       `)
 
-    let proveedorId: number | null = provRes.recordset?.[0]?.id ?? null
+    let proveedorId = provRes.recordset?.[0]?.id
 
     if (!proveedorId) {
       const createProv = await pool
@@ -110,11 +74,9 @@ export async function POST(req: Request) {
           OUTPUT INSERTED.id
           VALUES (@empresa_id, @nombre, @tipo_transportista, @tipo_entidad)
         `)
-
       proveedorId = createProv.recordset[0].id
     }
 
-    // -------- INSERT CAMIONES --------
     const insertedIds: number[] = []
     const duplicates: string[] = []
 
@@ -124,8 +86,7 @@ export async function POST(req: Request) {
         .input("proveedor_id", sql.Int, proveedorId)
         .input("patente", sql.VarChar(15), t.patente)
         .query(`
-          SELECT TOP 1 id
-          FROM camiones
+          SELECT 1 FROM camiones
           WHERE proveedor_id = @proveedor_id AND patente = @patente
         `)
 
@@ -141,7 +102,7 @@ export async function POST(req: Request) {
         .input("marca", sql.VarChar(50), t.marca)
         .input("modelo", sql.VarChar(50), t.modelo)
         .input("anio", sql.Int, t.anio)
-        .input("tipo", sql.VarChar(20), t.tipo || "camion")
+        .input("tipo", sql.VarChar(20), "camion")
         .input("carroceria", sql.VarChar(30), t.carroceria)
         .query(`
           INSERT INTO camiones
@@ -156,9 +117,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      proveedorId,
       insertedCount: insertedIds.length,
-      insertedIds,
       duplicates,
     })
   } catch (e) {
@@ -167,11 +126,6 @@ export async function POST(req: Request) {
   }
 }
 
-/* ======================================================
-   GET /api/fleet?empresaId=...
-   - Lista camiones por empresaId
-   - Trae foto guardada (si existe)
-   ====================================================== */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -202,10 +156,7 @@ export async function GET(req: Request) {
         ORDER BY c.created_at DESC
       `)
 
-    return NextResponse.json({
-      success: true,
-      trucks: result.recordset,
-    })
+    return NextResponse.json({ success: true, trucks: result.recordset })
   } catch (e) {
     console.error("[fleet][GET] error:", e)
     return NextResponse.json({ error: "Error al obtener camiones" }, { status: 500 })
