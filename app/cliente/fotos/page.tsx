@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { TruckPhotosForm } from "@/components/truck-photos-form"
 
 export default function FotosPage() {
@@ -9,7 +10,10 @@ export default function FotosPage() {
           <p className="text-slate-600">Sube 1 foto por camión. Idealmente una vista 3/4 donde se vea completo.</p>
         </div>
 
-        <TruckPhotosForm />
+        
+        <Suspense fallback={<div className="p-4">Cargando...</div>}>
+          <TruckPhotosForm />
+        </Suspense>
       </div>
     </main>
   )
