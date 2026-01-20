@@ -1,66 +1,72 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getPool, sql } from "@/lib/azure-sql"
 
-type Carroceria = "CAMION_CON_CARRO" | "CARRO_REEFER" | "CAMARA_DE_FRIO" | "CAMION_PAQUETERO"
-const ALLOWED: Carroceria[] = ["CAMION_CON_CARRO", "CARRO_REEFER", "CAMARA_DE_FRIO", "CAMION_PAQUETERO"]
+const ALLOWED_CARROCERIAS = new Set([
+  "CAMION_CON_CARRO",
+  "CARRO_REEFER",
+  "CAMARA_DE_FRIO",
+  "CAMION_PAQUETERO",
+])
 
-function normPatente(p: string) {
-  return p.replace(/\s+/g, "").toUpperCase()
+function normalizePatente(p: string) {
+  return String(p || "").trim().toUpperCase().replace(/\s+/g, "")
 }
 
-export async function GET(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const empresaId = Number(searchParams.get("empresaId"))
-
-    if (!empresaId || Number.isNaN(empresaId)) {
-      return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
-    }
-
-    const pool = await getPool()
-
-    const result = await pool
-      .request()
-      .input("empresa_id", sql.Int, empresaId)
-      .query(`
-        SELECT
-          c.id,
-          c.patente,
-          c.marca,
-          c.modelo,
-          c.anio,
-          c.carroceria,
-          cf.url AS foto_url
-        FROM proveedores p
-        INNER JOIN camiones c ON c.proveedor_id = p.id
-        LEFT JOIN camion_fotos cf ON cf.camion_id = c.id
-        WHERE p.empresa_id = @empresa_id
-        ORDER BY c.created_at DESC, c.id DESC
-      `)
-
-    return NextResponse.json({ success: true, trucks: result.recordset })
-  } catch (e) {
-    console.error("[fleet][GET] error:", e)
-    return NextResponse.json({ error: "Error al cargar flota" }, { status: 500 })
-  }
-}
-
+/* ======================================================
+   POST /api/fleet
+   - { empresaId, camiones: [{patente, carroceria, marca, modelo, anio, tipo}] }
+   - Devuelve insertedTrucks (id+patente)
+   ====================================================== */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
     const empresaId = Number(body?.empresaId)
-    const camiones = body?.camiones
 
     if (!empresaId || Number.isNaN(empresaId)) {
       return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
     }
-    if (!Array.isArray(camiones) || camiones.length === 0) {
+
+    const camiones = Array.isArray(body?.camiones) ? body.camiones : null
+    if (!camiones || camiones.length === 0) {
+      return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
+    }
+
+    const items: Array<{
+      patente: string
+      carroceria: string
+      marca: string | null
+      modelo: string | null
+      anio: number | null
+      tipo: string
+    }> = []
+
+    for (const t of camiones) {
+      const patente = normalizePatente(t?.patente)
+      if (!patente) continue
+
+      const carroceria = String(t?.carroceria || "")
+      if (!ALLOWED_CARROCERIAS.has(carroceria)) {
+        return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 })
+      }
+
+      const anioNum = Number(t?.anio)
+      items.push({
+        patente,
+        carroceria,
+        marca: t?.marca ? String(t.marca).trim() : null,
+        modelo: t?.modelo ? String(t.modelo).trim() : null,
+        anio: Number.isInteger(anioNum) ? anioNum : null,
+        tipo: String(t?.tipo || "camion"),
+      })
+    }
+
+    if (items.length === 0) {
       return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
     }
 
     const pool = await getPool()
 
-    // proveedor default para la empresa
+    // --- proveedor default por empresa ---
     const provRes = await pool
       .request()
       .input("empresa_id", sql.Int, empresaId)
@@ -88,62 +94,47 @@ export async function POST(req: Request) {
       proveedorId = createProv.recordset[0].id
     }
 
-    const insertedTrucks: Array<{ id: number; patente: string }> = []
     const duplicates: string[] = []
+    const insertedTrucks: Array<{ id: number; patente: string }> = []
 
-    for (const c of camiones) {
-      const patente = normPatente(String(c?.patente ?? ""))
-      const carroceria = String(c?.carroceria ?? "") as Carroceria
-      const marca = c?.marca ? String(c.marca) : null
-      const modelo = c?.modelo ? String(c.modelo) : null
-      const anio = c?.anio === null || c?.anio === undefined || c?.anio === "" ? null : Number(c.anio)
-
-      if (!patente) {
-        continue
-      }
-      if (!ALLOWED.includes(carroceria)) {
-        return NextResponse.json(
-          { error: `carroceria inválida: ${carroceria}. Debe ser: ${ALLOWED.join(", ")}` },
-          { status: 400 }
-        )
-      }
-
-      // evitar duplicados por proveedor + patente
+    for (const t of items) {
       const exists = await pool
         .request()
         .input("proveedor_id", sql.Int, proveedorId)
-        .input("patente", sql.VarChar(15), patente)
+        .input("patente", sql.VarChar(15), t.patente)
         .query(`
-          SELECT TOP 1 id FROM camiones
+          SELECT TOP 1 id
+          FROM camiones
           WHERE proveedor_id = @proveedor_id AND patente = @patente
         `)
 
       if (exists.recordset.length > 0) {
-        duplicates.push(patente)
+        duplicates.push(t.patente)
         continue
       }
 
       const ins = await pool
         .request()
         .input("proveedor_id", sql.Int, proveedorId)
-        .input("patente", sql.VarChar(15), patente)
-        .input("marca", sql.VarChar(50), marca)
-        .input("modelo", sql.VarChar(50), modelo)
-        .input("anio", sql.Int, Number.isNaN(anio as any) ? null : anio)
-        .input("tipo", sql.VarChar(20), "camion")
-        .input("carroceria", sql.VarChar(30), carroceria)
+        .input("patente", sql.VarChar(15), t.patente)
+        .input("marca", sql.VarChar(50), t.marca)
+        .input("modelo", sql.VarChar(50), t.modelo)
+        .input("anio", sql.Int, t.anio)
+        .input("tipo", sql.VarChar(20), t.tipo || "camion")
+        .input("carroceria", sql.VarChar(30), t.carroceria)
         .query(`
           INSERT INTO camiones (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
-          OUTPUT INSERTED.id
+          OUTPUT INSERTED.id, INSERTED.patente
           VALUES (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria)
         `)
 
-      insertedTrucks.push({ id: ins.recordset[0].id, patente })
+      insertedTrucks.push({ id: ins.recordset[0].id, patente: ins.recordset[0].patente })
     }
 
     return NextResponse.json({
       success: true,
       proveedorId,
+      insertedCount: insertedTrucks.length,
       insertedTrucks,
       duplicates,
     })
@@ -153,27 +144,28 @@ export async function POST(req: Request) {
   }
 }
 
+/* ======================================================
+   PUT /api/fleet
+   - { truckId, marca, modelo, anio, carroceria }
+   ====================================================== */
 export async function PUT(req: Request) {
   try {
     const body = await req.json()
-    const truckId = Number(body?.truckId)
 
+    const truckId = Number(body?.truckId)
     if (!truckId || Number.isNaN(truckId)) {
       return NextResponse.json({ error: "truckId es requerido" }, { status: 400 })
     }
 
-    const marca = body?.marca === "" ? null : (body?.marca ?? null)
-    const modelo = body?.modelo === "" ? null : (body?.modelo ?? null)
-    const anioRaw = body?.anio
-    const anio = anioRaw === "" || anioRaw === null || anioRaw === undefined ? null : Number(anioRaw)
-    const carroceria = body?.carroceria ?? null
-
-    if (carroceria && !ALLOWED.includes(carroceria)) {
-      return NextResponse.json(
-        { error: `carroceria inválida: ${carroceria}. Debe ser: ${ALLOWED.join(", ")}` },
-        { status: 400 }
-      )
+    const carroceria = body?.carroceria ? String(body.carroceria) : null
+    if (carroceria && !ALLOWED_CARROCERIAS.has(carroceria)) {
+      return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 })
     }
+
+    const marca = body?.marca ? String(body.marca).trim() : null
+    const modelo = body?.modelo ? String(body.modelo).trim() : null
+    const anioNum = Number(body?.anio)
+    const anio = Number.isInteger(anioNum) ? anioNum : null
 
     const pool = await getPool()
 
@@ -182,7 +174,7 @@ export async function PUT(req: Request) {
       .input("id", sql.Int, truckId)
       .input("marca", sql.VarChar(50), marca)
       .input("modelo", sql.VarChar(50), modelo)
-      .input("anio", sql.Int, Number.isNaN(anio as any) ? null : anio)
+      .input("anio", sql.Int, anio)
       .input("carroceria", sql.VarChar(30), carroceria)
       .query(`
         UPDATE camiones
@@ -198,5 +190,46 @@ export async function PUT(req: Request) {
   } catch (e) {
     console.error("[fleet][PUT] error:", e)
     return NextResponse.json({ error: "Error al actualizar camión" }, { status: 500 })
+  }
+}
+
+/* ======================================================
+   GET /api/fleet?empresaId=...
+   - Lista camiones + foto_url
+   ====================================================== */
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const empresaId = Number(searchParams.get("empresaId"))
+
+    if (!empresaId || Number.isNaN(empresaId)) {
+      return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
+    }
+
+    const pool = await getPool()
+
+    const result = await pool
+      .request()
+      .input("empresa_id", sql.Int, empresaId)
+      .query(`
+        SELECT
+          c.id,
+          c.patente,
+          c.marca,
+          c.modelo,
+          c.anio,
+          c.carroceria,
+          cf.url AS foto_url
+        FROM camiones c
+        INNER JOIN proveedores p ON p.id = c.proveedor_id
+        LEFT JOIN camion_fotos cf ON cf.camion_id = c.id
+        WHERE p.empresa_id = @empresa_id
+        ORDER BY c.created_at DESC
+      `)
+
+    return NextResponse.json({ success: true, trucks: result.recordset })
+  } catch (e) {
+    console.error("[fleet][GET] error:", e)
+    return NextResponse.json({ error: "Error al obtener camiones" }, { status: 500 })
   }
 }

@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
     const pool = await getPool()
 
-    // UPSERT: si existe, update; si no, insert
+    // UPSERT (camion_id es UNIQUE)
     await pool
       .request()
       .input("camion_id", sql.Int, camionId)
@@ -27,20 +27,17 @@ export async function POST(req: Request) {
       .query(`
         IF EXISTS (SELECT 1 FROM camion_fotos WHERE camion_id = @camion_id)
         BEGIN
-          UPDATE camion_fotos
-          SET url = @url
-          WHERE camion_id = @camion_id
+          UPDATE camion_fotos SET url = @url WHERE camion_id = @camion_id
         END
         ELSE
         BEGIN
-          INSERT INTO camion_fotos (camion_id, url)
-          VALUES (@camion_id, @url)
+          INSERT INTO camion_fotos (camion_id, url) VALUES (@camion_id, @url)
         END
       `)
 
     return NextResponse.json({ success: true })
   } catch (e) {
-    console.error("[truck-photo] error:", e)
-    return NextResponse.json({ error: "Error guardando URL de foto" }, { status: 500 })
+    console.error("[truck-photo][POST] error:", e)
+    return NextResponse.json({ error: "Error guardando foto" }, { status: 500 })
   }
 }
