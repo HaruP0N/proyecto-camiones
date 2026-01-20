@@ -24,10 +24,11 @@ interface FormData {
   prioridad_estructura: boolean
   prioridad_camion: boolean
   prioridad_acople: boolean
+  pin: string // ✅ nuevo
 }
 
-function normalizeRut(rut: string) {
-  return rut.trim()
+function isValidPin(pin: string) {
+  return /^\d{4}$/.test(pin.trim())
 }
 
 export function EmpresaForm() {
@@ -47,6 +48,7 @@ export function EmpresaForm() {
     prioridad_estructura: false,
     prioridad_camion: false,
     prioridad_acople: false,
+    pin: "",
   })
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -58,38 +60,19 @@ export function EmpresaForm() {
     setFormData((prev) => ({ ...prev, [name]: checked }))
   }
 
-  const redirectToExistingEmpresa = async (rut: string) => {
-    const res = await fetch(`/api/empresas?rut=${encodeURIComponent(rut)}`)
-    const data = await res.json()
-
-    if (!res.ok) throw new Error(data?.error || "No se pudo buscar la empresa existente")
-
-    const empresa = data?.empresa
-    const empresaId = empresa?.id
-
-    if (!empresaId) {
-      throw new Error("El RUT ya existe, pero no se encontró la empresa para redirigir.")
-    }
-
-    toast({
-      title: "Empresa ya registrada",
-      description: `Este RUT ya existe. Te llevaremos a la flota para agregar más camiones.`,
-    })
-
-    router.push(`/cliente/flota?empresaId=${empresaId}`)
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
 
-    const rut = normalizeRut(formData.rut)
-
     try {
+      if (!isValidPin(formData.pin)) {
+        throw new Error("PIN inválido. Debe ser de 4 dígitos.")
+      }
+
       const response = await fetch("/api/empresas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, rut }),
+        body: JSON.stringify(formData),
       })
 
       const result = await response.json()
@@ -109,10 +92,13 @@ export function EmpresaForm() {
       }
 
       const msg = String(result?.error || "")
-
-      // ✅ Caso: RUT duplicado → buscar y redirigir
       if (msg.toLowerCase().includes("rut ya está registrado")) {
-        await redirectToExistingEmpresa(rut)
+        toast({
+          title: "Empresa ya existe",
+          description: "Este RUT ya está registrado. Ingresa con tu RUT y PIN.",
+          variant: "destructive",
+        })
+        router.push("/cliente/ingresar")
         return
       }
 
@@ -132,7 +118,7 @@ export function EmpresaForm() {
     <Card className="shadow-xl">
       <CardHeader>
         <CardTitle>Información de la Empresa</CardTitle>
-        <CardDescription>Ingrese los datos del cliente y sus prioridades de inspección</CardDescription>
+        <CardDescription>Registra la empresa y crea un PIN de 4 dígitos para acceder después</CardDescription>
       </CardHeader>
 
       <CardContent>
@@ -141,49 +127,40 @@ export function EmpresaForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre de la Empresa *</Label>
-                <Input
-                  id="nombre"
-                  name="nombre"
-                  required
-                  value={formData.nombre}
-                  onChange={handleInputChange}
-                  placeholder="Ej: Transportes del Sur S.A."
-                />
+                <Input id="nombre" name="nombre" required value={formData.nombre} onChange={handleInputChange} />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="rut">RUT *</Label>
-                <Input
-                  id="rut"
-                  name="rut"
-                  required
-                  value={formData.rut}
-                  onChange={handleInputChange}
-                  placeholder="Ej: 12.345.678-9"
-                />
+                <Input id="rut" name="rut" required value={formData.rut} onChange={handleInputChange} />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rubro">Rubro</Label>
+              <Label htmlFor="pin">PIN (4 dígitos) *</Label>
               <Input
-                id="rubro"
-                name="rubro"
-                value={formData.rubro}
+                id="pin"
+                name="pin"
+                value={formData.pin}
                 onChange={handleInputChange}
-                placeholder="Ej: Transporte de carga refrigerada"
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="Ej: 1234"
+                required
               />
+              <p className="text-xs text-muted-foreground">
+                Este PIN lo usarás para volver a ingresar sin complicaciones.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="rubro">Rubro</Label>
+              <Input id="rubro" name="rubro" value={formData.rubro} onChange={handleInputChange} />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="direccion">Dirección</Label>
-              <Input
-                id="direccion"
-                name="direccion"
-                value={formData.direccion}
-                onChange={handleInputChange}
-                placeholder="Ej: Av. Siempre Viva 123"
-              />
+              <Input id="direccion" name="direccion" value={formData.direccion} onChange={handleInputChange} />
             </div>
 
             <div className="space-y-2">
@@ -193,7 +170,6 @@ export function EmpresaForm() {
                 name="productos_transportados"
                 value={formData.productos_transportados}
                 onChange={handleInputChange}
-                placeholder="Ej: Carnes, productos lácteos, frutas y verduras"
                 rows={3}
               />
             </div>
@@ -207,7 +183,6 @@ export function EmpresaForm() {
                   type="tel"
                   value={formData.telefono_contacto}
                   onChange={handleInputChange}
-                  placeholder="+56 9 1234 5678"
                 />
               </div>
 
@@ -219,7 +194,6 @@ export function EmpresaForm() {
                   type="email"
                   value={formData.email_contacto}
                   onChange={handleInputChange}
-                  placeholder="contacto@empresa.cl"
                 />
               </div>
             </div>
@@ -227,7 +201,6 @@ export function EmpresaForm() {
 
           <div className="space-y-3 pt-4 border-t">
             <h3 className="font-semibold text-lg">Prioridades de Inspección</h3>
-            <p className="text-sm text-muted-foreground">Seleccione las categorías prioritarias para esta empresa</p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
               <div className="flex items-center space-x-2">
@@ -245,9 +218,7 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_carroceria"
                   checked={formData.prioridad_carroceria}
-                  onCheckedChange={(checked) =>
-                    handleCheckboxChange("prioridad_carroceria", checked as boolean)
-                  }
+                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_carroceria", checked as boolean)}
                 />
                 <Label htmlFor="prioridad_carroceria" className="cursor-pointer">
                   Carrocería
@@ -290,7 +261,7 @@ export function EmpresaForm() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Procesando..." : "Registrar Empresa"}
+            {isSubmitting ? "Registrando..." : "Registrar Empresa"}
           </Button>
         </form>
       </CardContent>

@@ -415,9 +415,6 @@ export function FleetForm() {
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-semibold">Camiones registrados</h3>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => router.push(`/cliente/fotos?empresaId=${empresaId}`)}>
-                Ir a página de fotos (opcional)
-              </Button>
               <Button variant="outline" onClick={loadExisting} disabled={loadingExisting}>
                 {loadingExisting ? "Actualizando..." : "Actualizar"}
               </Button>

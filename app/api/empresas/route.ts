@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getPool, sql } from "@/lib/azure-sql"
+import { hashPin, isValidPin } from "@/lib/pin"
 
 export async function POST(request: NextRequest) {
   try {
@@ -17,12 +18,20 @@ export async function POST(request: NextRequest) {
       prioridad_estructura,
       prioridad_camion,
       prioridad_acople,
+      pin, // ✅ nuevo
     } = body
 
-    // Validación básica
     if (!nombre || !rut) {
       return NextResponse.json({ error: "Nombre y RUT son obligatorios" }, { status: 400 })
     }
+
+    // ✅ PIN requerido para clientes nuevos
+    const pinStr = String(pin ?? "").trim()
+    if (!isValidPin(pinStr)) {
+      return NextResponse.json({ error: "PIN inválido. Debe ser de 4 dígitos." }, { status: 400 })
+    }
+
+    const pin_hash = await hashPin(pinStr)
 
     const pool = await getPool()
 
@@ -40,19 +49,22 @@ export async function POST(request: NextRequest) {
       .input("prioridad_estructura", sql.Bit, prioridad_estructura ? 1 : 0)
       .input("prioridad_camion", sql.Bit, prioridad_camion ? 1 : 0)
       .input("prioridad_acople", sql.Bit, prioridad_acople ? 1 : 0)
+      .input("pin_hash", sql.VarChar(255), pin_hash)
       .query(`
         INSERT INTO empresas (
           nombre, rut, rubro, productos_transportados, 
           telefono_contacto, email_contacto, direccion,
           prioridad_frio, prioridad_carroceria, prioridad_estructura,
-          prioridad_camion, prioridad_acople
+          prioridad_camion, prioridad_acople,
+          pin_hash
         )
         OUTPUT INSERTED.id
         VALUES (
           @nombre, @rut, @rubro, @productos_transportados,
           @telefono_contacto, @email_contacto, @direccion,
           @prioridad_frio, @prioridad_carroceria, @prioridad_estructura,
-          @prioridad_camion, @prioridad_acople
+          @prioridad_camion, @prioridad_acople,
+          @pin_hash
         )
       `)
 
@@ -62,9 +74,8 @@ export async function POST(request: NextRequest) {
       message: "Empresa registrada exitosamente",
     })
   } catch (error: any) {
-    console.error("[empresas][POST] Error al registrar empresa:", error)
+    console.error("[empresas][POST] Error:", error)
 
-    // Error de RUT duplicado
     if (error?.number === 2627) {
       return NextResponse.json({ error: "El RUT ya está registrado" }, { status: 400 })
     }
@@ -80,7 +91,6 @@ export async function GET(request: NextRequest) {
 
     const pool = await getPool()
 
-    // ✅ Buscar por RUT (para redirigir a flota cuando ya exista)
     if (rut) {
       const result = await pool
         .request()
@@ -98,9 +108,10 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // ✅ Listado general
     const result = await pool.request().query(`
-      SELECT * FROM empresas
+      SELECT id, nombre, rut, rubro, productos_transportados, telefono_contacto, email_contacto, direccion,
+             prioridad_frio, prioridad_carroceria, prioridad_estructura, prioridad_camion, prioridad_acople, created_at
+      FROM empresas
       ORDER BY created_at DESC
     `)
 
@@ -109,7 +120,7 @@ export async function GET(request: NextRequest) {
       empresas: result.recordset,
     })
   } catch (error) {
-    console.error("[empresas][GET] Error al obtener empresas:", error)
+    console.error("[empresas][GET] Error:", error)
     return NextResponse.json({ error: "Error al obtener empresas" }, { status: 500 })
   }
 }
