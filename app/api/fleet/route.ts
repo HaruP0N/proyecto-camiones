@@ -8,6 +8,11 @@ const ALLOWED_CARROCERIAS = new Set([
   "CAMION_PAQUETERO",
 ])
 
+/* ======================================================
+   POST /api/fleet
+   - { empresaId, camiones: [{patente, carroceria, marca, modelo, anio, tipo}] }
+   - Devuelve insertedTrucks (id+patente) para poder guardar fotos
+   ====================================================== */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -18,38 +23,49 @@ export async function POST(req: Request) {
     }
 
     const camiones = Array.isArray(body?.camiones) ? body.camiones : null
-    const items: any[] = []
+    if (!camiones || camiones.length === 0) {
+      return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
+    }
 
-    if (camiones && camiones.length > 0) {
-      for (const t of camiones) {
-        const patente = String(t?.patente || "")
-          .trim()
-          .toUpperCase()
-          .replace(/\s+/g, "")
+    const items: Array<{
+      patente: string
+      carroceria: string
+      marca: string | null
+      modelo: string | null
+      anio: number | null
+      tipo: string
+    }> = []
 
-        if (!patente) continue
+    for (const t of camiones) {
+      const patente = String(t?.patente || "")
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "")
 
-        if (!ALLOWED_CARROCERIAS.has(t.carroceria)) {
-          return NextResponse.json(
-            { error: `Carrocería inválida: ${t.carroceria}` },
-            { status: 400 }
-          )
-        }
+      if (!patente) continue
 
-        items.push({
-          patente,
-          carroceria: t.carroceria,
-          marca: t.marca ?? null,
-          modelo: t.modelo ?? null,
-          anio: Number.isInteger(Number(t.anio)) ? Number(t.anio) : null,
-        })
+      const carroceria = String(t?.carroceria || "")
+      if (!ALLOWED_CARROCERIAS.has(carroceria)) {
+        return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 })
       }
-    } else {
+
+      items.push({
+        patente,
+        carroceria,
+        marca: t?.marca ? String(t.marca).trim() : null,
+        modelo: t?.modelo ? String(t.modelo).trim() : null,
+        anio: Number.isInteger(Number(t?.anio)) ? Number(t.anio) : null,
+        tipo: String(t?.tipo || "camion"),
+      })
+    }
+
+    if (items.length === 0) {
       return NextResponse.json({ error: "camiones es requerido" }, { status: 400 })
     }
 
     const pool = await getPool()
 
+    // --- proveedor default por empresa ---
     const provRes = await pool
       .request()
       .input("empresa_id", sql.Int, empresaId)
@@ -60,7 +76,7 @@ export async function POST(req: Request) {
         ORDER BY created_at DESC
       `)
 
-    let proveedorId = provRes.recordset?.[0]?.id
+    let proveedorId: number | null = provRes.recordset?.[0]?.id ?? null
 
     if (!proveedorId) {
       const createProv = await pool
@@ -77,16 +93,18 @@ export async function POST(req: Request) {
       proveedorId = createProv.recordset[0].id
     }
 
-    const insertedIds: number[] = []
     const duplicates: string[] = []
+    const insertedTrucks: Array<{ id: number; patente: string }> = []
 
     for (const t of items) {
+      // evitar duplicado (proveedor+patente)
       const exists = await pool
         .request()
         .input("proveedor_id", sql.Int, proveedorId)
         .input("patente", sql.VarChar(15), t.patente)
         .query(`
-          SELECT 1 FROM camiones
+          SELECT TOP 1 id
+          FROM camiones
           WHERE proveedor_id = @proveedor_id AND patente = @patente
         `)
 
@@ -102,22 +120,25 @@ export async function POST(req: Request) {
         .input("marca", sql.VarChar(50), t.marca)
         .input("modelo", sql.VarChar(50), t.modelo)
         .input("anio", sql.Int, t.anio)
-        .input("tipo", sql.VarChar(20), "camion")
+        .input("tipo", sql.VarChar(20), t.tipo || "camion")
         .input("carroceria", sql.VarChar(30), t.carroceria)
         .query(`
-          INSERT INTO camiones
-            (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
-          OUTPUT INSERTED.id
-          VALUES
-            (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria)
+          INSERT INTO camiones (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
+          OUTPUT INSERTED.id, INSERTED.patente
+          VALUES (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria)
         `)
 
-      insertedIds.push(ins.recordset[0].id)
+      insertedTrucks.push({
+        id: ins.recordset[0].id,
+        patente: ins.recordset[0].patente,
+      })
     }
 
     return NextResponse.json({
       success: true,
-      insertedCount: insertedIds.length,
+      proveedorId,
+      insertedCount: insertedTrucks.length,
+      insertedTrucks,
       duplicates,
     })
   } catch (e) {
@@ -126,6 +147,59 @@ export async function POST(req: Request) {
   }
 }
 
+/* ======================================================
+   PUT /api/fleet
+   - Editar un camión existente
+   - { truckId, marca, modelo, anio, carroceria }
+   ====================================================== */
+export async function PUT(req: Request) {
+  try {
+    const body = await req.json()
+
+    const truckId = Number(body?.truckId)
+    if (!truckId || Number.isNaN(truckId)) {
+      return NextResponse.json({ error: "truckId es requerido" }, { status: 400 })
+    }
+
+    const carroceria = body?.carroceria ? String(body.carroceria) : null
+    if (carroceria && !ALLOWED_CARROCERIAS.has(carroceria)) {
+      return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 })
+    }
+
+    const marca = body?.marca ? String(body.marca).trim() : null
+    const modelo = body?.modelo ? String(body.modelo).trim() : null
+    const anio = Number.isInteger(Number(body?.anio)) ? Number(body.anio) : null
+
+    const pool = await getPool()
+
+    await pool
+      .request()
+      .input("id", sql.Int, truckId)
+      .input("marca", sql.VarChar(50), marca)
+      .input("modelo", sql.VarChar(50), modelo)
+      .input("anio", sql.Int, anio)
+      .input("carroceria", sql.VarChar(30), carroceria)
+      .query(`
+        UPDATE camiones
+        SET
+          marca = @marca,
+          modelo = @modelo,
+          anio = @anio,
+          carroceria = COALESCE(@carroceria, carroceria)
+        WHERE id = @id
+      `)
+
+    return NextResponse.json({ success: true })
+  } catch (e) {
+    console.error("[fleet][PUT] error:", e)
+    return NextResponse.json({ error: "Error al actualizar camión" }, { status: 500 })
+  }
+}
+
+/* ======================================================
+   GET /api/fleet?empresaId=...
+   - Lista camiones + trae foto_url si existe
+   ====================================================== */
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url)
@@ -156,7 +230,10 @@ export async function GET(req: Request) {
         ORDER BY c.created_at DESC
       `)
 
-    return NextResponse.json({ success: true, trucks: result.recordset })
+    return NextResponse.json({
+      success: true,
+      trucks: result.recordset,
+    })
   } catch (e) {
     console.error("[fleet][GET] error:", e)
     return NextResponse.json({ error: "Error al obtener camiones" }, { status: 500 })
