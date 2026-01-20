@@ -62,10 +62,10 @@ export async function POST(request: NextRequest) {
       message: "Empresa registrada exitosamente",
     })
   } catch (error: any) {
-    console.error("[v0] Error al registrar empresa:", error)
+    console.error("[empresas][POST] Error al registrar empresa:", error)
 
-    // Manejo de error de RUT duplicado
-    if (error.number === 2627) {
+    // Error de RUT duplicado
+    if (error?.number === 2627) {
       return NextResponse.json({ error: "El RUT ya está registrado" }, { status: 400 })
     }
 
@@ -73,11 +73,34 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const rut = searchParams.get("rut")
+
     const pool = await getPool()
+
+    // ✅ Buscar por RUT (para redirigir a flota cuando ya exista)
+    if (rut) {
+      const result = await pool
+        .request()
+        .input("rut", sql.VarChar(20), rut)
+        .query(`
+          SELECT TOP 1 id, nombre, rut
+          FROM empresas
+          WHERE rut = @rut
+          ORDER BY created_at DESC
+        `)
+
+      return NextResponse.json({
+        success: true,
+        empresa: result.recordset?.[0] ?? null,
+      })
+    }
+
+    // ✅ Listado general
     const result = await pool.request().query(`
-      SELECT * FROM empresas 
+      SELECT * FROM empresas
       ORDER BY created_at DESC
     `)
 
@@ -86,7 +109,7 @@ export async function GET() {
       empresas: result.recordset,
     })
   } catch (error) {
-    console.error("[v0] Error al obtener empresas:", error)
+    console.error("[empresas][GET] Error al obtener empresas:", error)
     return NextResponse.json({ error: "Error al obtener empresas" }, { status: 500 })
   }
 }

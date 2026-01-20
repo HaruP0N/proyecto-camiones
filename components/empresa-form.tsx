@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -25,6 +24,10 @@ interface FormData {
   prioridad_estructura: boolean
   prioridad_camion: boolean
   prioridad_acople: boolean
+}
+
+function normalizeRut(rut: string) {
+  return rut.trim()
 }
 
 export function EmpresaForm() {
@@ -55,15 +58,38 @@ export function EmpresaForm() {
     setFormData((prev) => ({ ...prev, [name]: checked }))
   }
 
+  const redirectToExistingEmpresa = async (rut: string) => {
+    const res = await fetch(`/api/empresas?rut=${encodeURIComponent(rut)}`)
+    const data = await res.json()
+
+    if (!res.ok) throw new Error(data?.error || "No se pudo buscar la empresa existente")
+
+    const empresa = data?.empresa
+    const empresaId = empresa?.id
+
+    if (!empresaId) {
+      throw new Error("El RUT ya existe, pero no se encontró la empresa para redirigir.")
+    }
+
+    toast({
+      title: "Empresa ya registrada",
+      description: `Este RUT ya existe. Te llevaremos a la flota para agregar más camiones.`,
+    })
+
+    router.push(`/cliente/flota?empresaId=${empresaId}`)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+
+    const rut = normalizeRut(formData.rut)
 
     try {
       const response = await fetch("/api/empresas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, rut }),
       })
 
       const result = await response.json()
@@ -76,11 +102,17 @@ export function EmpresaForm() {
           description: `${formData.nombre} ha sido registrada exitosamente.`,
         })
 
-        if (!empresaId) {
-          throw new Error("No se recibió id desde el servidor")
-        }
+        if (!empresaId) throw new Error("No se recibió id desde el servidor")
 
         router.push(`/cliente/flota?empresaId=${empresaId}`)
+        return
+      }
+
+      const msg = String(result?.error || "")
+
+      // ✅ Caso: RUT duplicado → buscar y redirigir
+      if (msg.toLowerCase().includes("rut ya está registrado")) {
+        await redirectToExistingEmpresa(rut)
         return
       }
 
@@ -102,6 +134,7 @@ export function EmpresaForm() {
         <CardTitle>Información de la Empresa</CardTitle>
         <CardDescription>Ingrese los datos del cliente y sus prioridades de inspección</CardDescription>
       </CardHeader>
+
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-4">
@@ -212,7 +245,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_carroceria"
                   checked={formData.prioridad_carroceria}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_carroceria", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_carroceria", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_carroceria" className="cursor-pointer">
                   Carrocería
@@ -255,7 +290,7 @@ export function EmpresaForm() {
           </div>
 
           <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Registrando..." : "Registrar Empresa"}
+            {isSubmitting ? "Procesando..." : "Registrar Empresa"}
           </Button>
         </form>
       </CardContent>
