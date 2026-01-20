@@ -7,12 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useToast } from "@/hooks/use-toast"
 
-/* ===== Valores EXACTOS permitidos por la BD ===== */
-type Carroceria =
-  | "CAMION_CON_CARRO"
-  | "CARRO_REEFER"
-  | "CAMARA_DE_FRIO"
-  | "CAMION_PAQUETERO"
+type Carroceria = "CAMION_CON_CARRO" | "CARRO_REEFER" | "CAMARA_DE_FRIO" | "CAMION_PAQUETERO"
 
 type ExistingTruck = {
   id: number
@@ -20,8 +15,8 @@ type ExistingTruck = {
   marca: string | null
   modelo: string | null
   anio: number | null
-  carroceria: string | null
-  foto_url?: string | null
+  carroceria: Carroceria | null
+  foto_url: string | null
 }
 
 type NewTruckRow = {
@@ -30,6 +25,14 @@ type NewTruckRow = {
   marca: string
   modelo: string
   anio: string
+  foto_url: string // ✅ simple: url texto
+}
+
+type EditTruckPatch = {
+  marca?: string
+  modelo?: string
+  anio?: string
+  carroceria?: Carroceria
 }
 
 const CARROCERIAS: { value: Carroceria; label: string }[] = [
@@ -47,29 +50,15 @@ export function FleetForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
-
   const empresaId = searchParams.get("empresaId")
 
-  /* ===============================
-     BOTONES DE NAVEGACIÓN (OPCIÓN B)
-     =============================== */
-  const NavigationButtons = () => (
-    <div className="flex gap-3 mb-6">
-      <Button variant="outline" type="button" onClick={() => router.back()}>
-        ← Volver
-      </Button>
-
-      <Button variant="outline" type="button" onClick={() => router.push("/cliente")}>
-        ⌂ Volver al inicio
-      </Button>
-    </div>
-  )
-
-  /* ===============================
-     CAMIONES EXISTENTES
-     =============================== */
+  // ===== existentes =====
   const [existing, setExisting] = useState<ExistingTruck[]>([])
   const [loadingExisting, setLoadingExisting] = useState(false)
+  const [editById, setEditById] = useState<Record<number, EditTruckPatch>>({})
+
+  // URL editable por camión (solo texto)
+  const [photoUrlById, setPhotoUrlById] = useState<Record<number, string>>({})
 
   const loadExisting = async () => {
     if (!empresaId) return
@@ -78,7 +67,14 @@ export function FleetForm() {
       const res = await fetch(`/api/fleet?empresaId=${empresaId}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || "Error al cargar camiones")
-      setExisting(data?.trucks ?? [])
+
+      const trucks: ExistingTruck[] = data?.trucks ?? []
+      setExisting(trucks)
+
+      // precargar input de URLs
+      const map: Record<number, string> = {}
+      for (const t of trucks) map[t.id] = t.foto_url ?? ""
+      setPhotoUrlById(map)
     } catch (e) {
       toast({
         title: "Error",
@@ -95,28 +91,26 @@ export function FleetForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId])
 
-  /* ===============================
-     NUEVOS CAMIONES
-     =============================== */
-  const [paste, setPaste] = useState("")
+  // ===== nuevos =====
   const [defaultCarroceria, setDefaultCarroceria] = useState<Carroceria>("CAMION_CON_CARRO")
+  const [paste, setPaste] = useState("")
   const [rows, setRows] = useState<NewTruckRow[]>([])
   const [saving, setSaving] = useState(false)
 
   const duplicatesInForm = useMemo(() => {
     const counts = new Map<string, number>()
-    rows.forEach((r) => {
+    for (const r of rows) {
       const p = normalizePatente(r.patente)
-      if (!p) return
+      if (!p) continue
       counts.set(p, (counts.get(p) ?? 0) + 1)
-    })
-    return new Set([...counts.entries()].filter(([, c]) => c > 1).map(([p]) => p))
+    }
+    return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([p]) => p))
   }, [rows])
 
   const handleGenerateRows = () => {
     const patentes = paste
       .split(/\r?\n/)
-      .map(normalizePatente)
+      .map((x) => normalizePatente(x))
       .filter(Boolean)
 
     if (patentes.length === 0) {
@@ -124,29 +118,38 @@ export function FleetForm() {
       return
     }
 
-    const existentes = new Set(existing.map((e) => normalizePatente(e.patente)))
+    const existingInDB = new Set(existing.map((t) => normalizePatente(t.patente)))
+    const existingInForm = new Set(rows.map((r) => normalizePatente(r.patente)))
 
-    const nuevas = patentes.filter((p) => !existentes.has(p))
-    if (nuevas.length === 0) {
+    const toAdd = patentes.filter((p) => !existingInForm.has(p))
+    const alreadyDB = toAdd.filter((p) => existingInDB.has(p))
+    const reallyNew = toAdd.filter((p) => !existingInDB.has(p))
+
+    if (alreadyDB.length > 0) {
       toast({
-        title: "Sin cambios",
-        description: "Todas las patentes ya existen.",
+        title: "Patentes ya registradas",
+        description: `Se omiten: ${alreadyDB.join(", ")}`,
         variant: "destructive",
       })
+    }
+
+    if (reallyNew.length === 0) {
       setPaste("")
       return
     }
 
     setRows((prev) => [
       ...prev,
-      ...nuevas.map((p) => ({
+      ...reallyNew.map((p) => ({
         patente: p,
         carroceria: defaultCarroceria,
         marca: "",
         modelo: "",
         anio: "",
+        foto_url: "",
       })),
     ])
+
     setPaste("")
   }
 
@@ -158,13 +161,86 @@ export function FleetForm() {
     setRows((prev) => prev.filter((_, i) => i !== idx))
   }
 
-  const handleSave = async () => {
+  const parseYear = (value: string | number | null | undefined): number | null => {
+    if (value === null || value === undefined) return null
+    if (typeof value === "number") return value
+    const s = String(value).trim()
+    if (s === "") return null
+    const n = Number(s)
+    if (!Number.isInteger(n)) return null
+    return n
+  }
+
+  const saveExistingRow = async (t: ExistingTruck) => {
+    const patch = editById[t.id] ?? {}
+    const anio = parseYear(patch.anio ?? t.anio)
+
+    if (anio !== null && (anio < 1900 || anio > 2100)) {
+      toast({ title: "Error", description: "Año inválido.", variant: "destructive" })
+      return
+    }
+
+    try {
+      const res = await fetch("/api/fleet", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          truckId: t.id,
+          marca: (patch.marca ?? t.marca) ?? null,
+          modelo: (patch.modelo ?? t.modelo) ?? null,
+          anio,
+          carroceria: (patch.carroceria ?? t.carroceria) ?? null,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "No se pudo actualizar el camión")
+
+      toast({ title: "Actualizado", description: `Camión ${t.patente} actualizado.` })
+      setEditById((p) => {
+        const copy = { ...p }
+        delete copy[t.id]
+        return copy
+      })
+      await loadExisting()
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Error", variant: "destructive" })
+    }
+  }
+
+  const savePhotoUrl = async (truckId: number, patente: string) => {
+    const url = String(photoUrlById[truckId] ?? "").trim()
+    if (!url) {
+      toast({ title: "Falta URL", description: "Pega una URL antes de guardar.", variant: "destructive" })
+      return
+    }
+
+    try {
+      const res = await fetch("/api/truck-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ camionId: truckId, url }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "No se pudo guardar URL")
+
+      toast({ title: "Listo", description: `URL guardada para ${patente}` })
+      await loadExisting()
+    } catch (e) {
+      toast({
+        title: "Error",
+        description: e instanceof Error ? e.message : "No se pudo guardar URL",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveNew = async () => {
     if (!empresaId) {
-      toast({ title: "Error", description: "Falta empresaId.", variant: "destructive" })
+      toast({ title: "Error", description: "Falta empresaId en la URL.", variant: "destructive" })
       return
     }
     if (rows.length === 0) {
-      toast({ title: "Sin camiones", description: "No hay camiones para guardar.", variant: "destructive" })
+      toast({ title: "Sin camiones", description: "Agrega al menos un camión.", variant: "destructive" })
       return
     }
     if (duplicatesInForm.size > 0) {
@@ -183,8 +259,8 @@ export function FleetForm() {
         camiones: rows.map((r) => ({
           patente: normalizePatente(r.patente),
           carroceria: r.carroceria,
-          marca: r.marca || null,
-          modelo: r.modelo || null,
+          marca: r.marca.trim() || null,
+          modelo: r.modelo.trim() || null,
           anio: r.anio ? Number(r.anio) : null,
           tipo: "camion",
         })),
@@ -199,10 +275,24 @@ export function FleetForm() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || "Error al guardar flota")
 
-      toast({
-        title: "Listo",
-        description: `Camiones agregados correctamente.`,
-      })
+      const insertedTrucks: Array<{ id: number; patente: string }> = data?.insertedTrucks ?? []
+
+      // Guardar URLs (si se ingresaron) por camión insertado
+      for (const it of insertedTrucks) {
+        const row = rows.find((r) => normalizePatente(r.patente) === normalizePatente(it.patente))
+        const url = String(row?.foto_url ?? "").trim()
+        if (!url) continue
+
+        const r2 = await fetch("/api/truck-photo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ camionId: it.id, url }),
+        })
+        const d2 = await r2.json()
+        if (!r2.ok) throw new Error(d2?.error || `Error guardando URL de ${it.patente}`)
+      }
+
+      toast({ title: "Flota actualizada", description: `Insertados: ${insertedTrucks.length}` })
 
       setRows([])
       await loadExisting()
@@ -217,30 +307,40 @@ export function FleetForm() {
     }
   }
 
-  /* ===============================
-     RENDER
-     =============================== */
+  if (!empresaId) {
+    return <div className="p-4 text-red-600">Falta empresaId en la URL.</div>
+  }
+
   return (
     <>
-      <NavigationButtons />
+      {/* Botones navegación claros */}
+      <div className="flex gap-3 mb-6">
+        <Button variant="outline" type="button" onClick={() => router.back()}>
+          ← Volver
+        </Button>
+        <Button variant="outline" type="button" onClick={() => router.push("/cliente")}>
+          ⌂ Volver al inicio
+        </Button>
+      </div>
 
       <Card className="shadow-xl">
         <CardHeader>
           <CardTitle>Registro de Flota</CardTitle>
-          <CardDescription>
-            Aquí puedes ver tus camiones registrados y agregar nuevos.
-          </CardDescription>
+          <CardDescription>Ver camiones, editar datos y guardar URL de foto (temporal).</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-8">
-          {/* ===== Camiones existentes ===== */}
-          <div>
-            <h3 className="font-semibold mb-2">Camiones registrados</h3>
+          {/* ===== Existentes (tabla) ===== */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="font-semibold">Camiones registrados</h3>
+              <Button variant="outline" onClick={loadExisting} disabled={loadingExisting}>
+                {loadingExisting ? "Actualizando..." : "Actualizar"}
+              </Button>
+            </div>
 
             {existing.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aún no hay camiones registrados.
-              </p>
+              <p className="text-sm text-muted-foreground">Aún no hay camiones registrados.</p>
             ) : (
               <div className="overflow-auto border rounded-lg">
                 <table className="w-full text-sm">
@@ -251,20 +351,104 @@ export function FleetForm() {
                       <th className="p-2 text-left">Modelo</th>
                       <th className="p-2 text-left">Año</th>
                       <th className="p-2 text-left">Carrocería</th>
-                      <th className="p-2 text-left">Foto</th>
+                      <th className="p-2 text-left">URL Foto</th>
+                      <th className="p-2 text-left">Acciones</th>
                     </tr>
                   </thead>
+
                   <tbody>
-                    {existing.map((t) => (
-                      <tr key={t.id} className="border-t">
-                        <td className="p-2 font-medium">{t.patente}</td>
-                        <td className="p-2">{t.marca ?? "-"}</td>
-                        <td className="p-2">{t.modelo ?? "-"}</td>
-                        <td className="p-2">{t.anio ?? "-"}</td>
-                        <td className="p-2">{t.carroceria ?? "-"}</td>
-                        <td className="p-2">{t.foto_url ? "✅" : "—"}</td>
-                      </tr>
-                    ))}
+                    {existing.map((t) => {
+                      const patch = editById[t.id] ?? {}
+                      const effective = {
+                        marca: patch.marca ?? t.marca ?? "",
+                        modelo: patch.modelo ?? t.modelo ?? "",
+                        anio: patch.anio ?? (t.anio !== null ? String(t.anio) : ""),
+                        carroceria: (patch.carroceria ?? t.carroceria ?? "CAMION_CON_CARRO") as Carroceria,
+                      }
+
+                      return (
+                        <tr key={t.id} className="border-t align-top">
+                          <td className="p-2 font-medium">{t.patente}</td>
+
+                          <td className="p-2 min-w-[160px]">
+                            <Input
+                              value={effective.marca}
+                              onChange={(e) =>
+                                setEditById((p) => ({
+                                  ...p,
+                                  [t.id]: { ...(p[t.id] ?? {}), marca: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+
+                          <td className="p-2 min-w-[160px]">
+                            <Input
+                              value={effective.modelo}
+                              onChange={(e) =>
+                                setEditById((p) => ({
+                                  ...p,
+                                  [t.id]: { ...(p[t.id] ?? {}), modelo: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+
+                          <td className="p-2 min-w-[110px]">
+                            <Input
+                              value={effective.anio}
+                              inputMode="numeric"
+                              placeholder="2020"
+                              onChange={(e) =>
+                                setEditById((p) => ({
+                                  ...p,
+                                  [t.id]: { ...(p[t.id] ?? {}), anio: e.target.value },
+                                }))
+                              }
+                            />
+                          </td>
+
+                          <td className="p-2 min-w-[190px]">
+                            <select
+                              className="w-full h-10 rounded-md border px-2"
+                              value={effective.carroceria}
+                              onChange={(e) =>
+                                setEditById((p) => ({
+                                  ...p,
+                                  [t.id]: { ...(p[t.id] ?? {}), carroceria: e.target.value as Carroceria },
+                                }))
+                              }
+                            >
+                              {CARROCERIAS.map((c) => (
+                                <option key={c.value} value={c.value}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+
+                          <td className="p-2 min-w-[320px] space-y-2">
+                            <Input
+                              value={photoUrlById[t.id] ?? ""}
+                              placeholder="https://..."
+                              onChange={(e) => setPhotoUrlById((p) => ({ ...p, [t.id]: e.target.value }))}
+                            />
+                            <div className="text-xs text-muted-foreground">
+                              Estado: {t.foto_url ? "✅ guardada" : "— sin URL"}
+                            </div>
+                          </td>
+
+                          <td className="p-2 min-w-[200px] space-y-2">
+                            <Button type="button" className="w-full" onClick={() => saveExistingRow(t)}>
+                              Guardar cambios
+                            </Button>
+                            <Button type="button" variant="outline" className="w-full" onClick={() => savePhotoUrl(t.id, t.patente)}>
+                              Guardar URL
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -297,6 +481,7 @@ export function FleetForm() {
                   className="w-full min-h-[96px] rounded-md border p-2 text-sm"
                   value={paste}
                   onChange={(e) => setPaste(e.target.value)}
+                  placeholder={"ABCD12\nEFGH34"}
                 />
                 <Button className="mt-2" variant="outline" type="button" onClick={handleGenerateRows}>
                   Generar filas
@@ -304,67 +489,97 @@ export function FleetForm() {
               </div>
             </div>
 
-            {rows.length > 0 && (
+            {rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Agrega patentes para crear filas.</p>
+            ) : (
               <div className="overflow-auto border rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="p-2">Patente</th>
-                      <th className="p-2">Carrocería</th>
-                      <th className="p-2">Marca</th>
-                      <th className="p-2">Modelo</th>
-                      <th className="p-2">Año</th>
+                      <th className="p-2 text-left">Patente</th>
+                      <th className="p-2 text-left">Carrocería</th>
+                      <th className="p-2 text-left">Marca</th>
+                      <th className="p-2 text-left">Modelo</th>
+                      <th className="p-2 text-left">Año</th>
+                      <th className="p-2 text-left">URL Foto (opcional)</th>
                       <th />
                     </tr>
                   </thead>
+
                   <tbody>
-                    {rows.map((r, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="p-2">
-                          <Input value={r.patente} onChange={(e) => updateRow(i, { patente: e.target.value })} />
-                        </td>
-                        <td className="p-2">
-                          <select
-                            className="w-full h-10 rounded-md border px-2"
-                            value={r.carroceria}
-                            onChange={(e) => updateRow(i, { carroceria: e.target.value as Carroceria })}
-                          >
-                            {CARROCERIAS.map((c) => (
-                              <option key={c.value} value={c.value}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="p-2">
-                          <Input value={r.marca} onChange={(e) => updateRow(i, { marca: e.target.value })} />
-                        </td>
-                        <td className="p-2">
-                          <Input value={r.modelo} onChange={(e) => updateRow(i, { modelo: e.target.value })} />
-                        </td>
-                        <td className="p-2">
-                          <Input
-                            value={r.anio}
-                            inputMode="numeric"
-                            placeholder="2020"
-                            onChange={(e) => updateRow(i, { anio: e.target.value })}
-                          />
-                        </td>
-                        <td className="p-2">
-                          <Button variant="outline" type="button" onClick={() => removeRow(i)}>
-                            Quitar
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                    {rows.map((r, i) => {
+                      const key = normalizePatente(r.patente)
+                      const isDup = duplicatesInForm.has(key)
+
+                      return (
+                        <tr key={i} className={isDup ? "bg-red-50 border-t" : "border-t"}>
+                          <td className="p-2 min-w-[140px]">
+                            <Input
+                              value={r.patente}
+                              onChange={(e) => updateRow(i, { patente: e.target.value })}
+                              className={isDup ? "border-red-400" : ""}
+                            />
+                          </td>
+
+                          <td className="p-2 min-w-[190px]">
+                            <select
+                              className="w-full h-10 rounded-md border px-2"
+                              value={r.carroceria}
+                              onChange={(e) => updateRow(i, { carroceria: e.target.value as Carroceria })}
+                            >
+                              {CARROCERIAS.map((c) => (
+                                <option key={c.value} value={c.value}>
+                                  {c.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+
+                          <td className="p-2 min-w-[160px]">
+                            <Input value={r.marca} onChange={(e) => updateRow(i, { marca: e.target.value })} />
+                          </td>
+
+                          <td className="p-2 min-w-[160px]">
+                            <Input value={r.modelo} onChange={(e) => updateRow(i, { modelo: e.target.value })} />
+                          </td>
+
+                          <td className="p-2 min-w-[110px]">
+                            <Input
+                              value={r.anio}
+                              inputMode="numeric"
+                              placeholder="2020"
+                              onChange={(e) => updateRow(i, { anio: e.target.value })}
+                            />
+                          </td>
+
+                          <td className="p-2 min-w-[320px]">
+                            <Input
+                              value={r.foto_url}
+                              placeholder="https://..."
+                              onChange={(e) => updateRow(i, { foto_url: e.target.value })}
+                            />
+                          </td>
+
+                          <td className="p-2">
+                            <Button variant="outline" type="button" onClick={() => removeRow(i)}>
+                              Quitar
+                            </Button>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
             )}
 
-            <Button className="w-full" onClick={handleSave} disabled={saving || rows.length === 0}>
+            <Button className="w-full" onClick={handleSaveNew} disabled={saving || rows.length === 0}>
               {saving ? "Guardando..." : "Guardar nuevos camiones"}
             </Button>
+
+            <p className="text-xs text-muted-foreground">
+              Nota: por ahora guardamos una URL (texto). Más adelante pueden reemplazar esto por “subir imagen” sin cambiar la tabla.
+            </p>
           </div>
         </CardContent>
       </Card>
