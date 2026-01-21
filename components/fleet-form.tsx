@@ -400,10 +400,10 @@ export function FleetForm() {
     <>
       {/* Botones navegación */}
       <div className="flex gap-3 mb-6">
-        <Button variant="outline" type="button" onClick={() => router.back()}>
+        <Button variant="outline" type="button" onClick={() => router.push("/cliente")}>
           ← Volver
         </Button>
-        <Button variant="outline" type="button" onClick={() => router.push("/cliente")}>
+        <Button variant="outline" type="button" onClick={() => router.push("/")}>
           ⌂ Volver al inicio
         </Button>
       </div>
