@@ -1,4 +1,4 @@
-export default function InspectorPage() {
+export default function InspectorHome() {
   return (
     <main className="min-h-screen p-6">
       <h1 className="text-2xl font-bold">Panel de Inspector</h1>

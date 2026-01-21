@@ -1,13 +1,67 @@
-"use client"
+"use client";
 
-import "@/styles/petran-login.css"
-import { useRouter } from "next/navigation"
-import { useState } from "react"
-import Image from "next/image"
+import "@/styles/petran-login.css";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import Image from "next/image";
 
 export default function LoginPage() {
-  const router = useRouter()
-  const [showStaffLogin, setShowStaffLogin] = useState(false)
+  const router = useRouter();
+
+  const [showStaffLogin, setShowStaffLogin] = useState(false);
+
+  // Staff login states
+  const [email, setEmail] = useState("admin@petran.cl");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleStaffLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (loading) return;
+
+    const emailTrim = email.trim();
+    if (!emailTrim || !password) {
+      alert("Completa email y contraseña.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/staff/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailTrim, password }),
+      });
+
+      const data = await res.json();
+      console.log("LOGIN RESPONSE:", data);
+
+      if (!res.ok || !data.ok) {
+        alert(data?.error ?? "No se pudo iniciar sesión");
+        return;
+      }
+
+      const rol = data?.user?.rol;
+
+      if (rol === "admin") {
+        // Forzar navegación (evita edge cases con router en dev)
+        window.location.href = "/admin/camiones";
+        return;
+      }
+
+      if (rol === "operador") {
+        // Si todavía no tienes /inspector, crea un placeholder o usa /admin/camiones temporalmente
+        window.location.href = "/inspector";
+        return;
+      }
+
+      alert("Login OK, pero rol inesperado: " + String(rol));
+    } catch (err: any) {
+      alert(err?.message ?? "Error de red");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="petran-login">
@@ -53,24 +107,47 @@ export default function LoginPage() {
               </div>
             ) : (
               <div className="staff-login">
-                <button className="back-link" onClick={() => setShowStaffLogin(false)}>
+                <button
+                  className="back-link"
+                  type="button"
+                  onClick={() => {
+                    setShowStaffLogin(false);
+                    setEmail("");
+                    setPassword("");
+                  }}
+                >
                   ← Volver al registro
                 </button>
+
                 <h2>Acceso Personal</h2>
 
-                <form className="login-form">
+                <form className="login-form" onSubmit={handleStaffLogin}>
                   <div className="input-group">
                     <label>Email Corporativo</label>
-                    <input type="email" placeholder="usuario@petran.cl" required />
+                    <input
+                      type="email"
+                      placeholder="usuario@petran.cl"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      autoComplete="email"
+                    />
                   </div>
 
                   <div className="input-group">
                     <label>Contraseña</label>
-                    <input type="password" placeholder="••••••••" required />
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      autoComplete="current-password"
+                    />
                   </div>
 
-                  <button type="submit" className="btn-dark">
-                    Entrar al Panel
+                  <button type="submit" className="btn-dark" disabled={loading}>
+                    {loading ? "Entrando..." : "Entrar al Panel"}
                   </button>
                 </form>
               </div>
@@ -79,5 +156,5 @@ export default function LoginPage() {
         </section>
       </main>
     </div>
-  )
+  );
 }
