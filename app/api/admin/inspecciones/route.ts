@@ -84,16 +84,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ✅ IMPORTANTE: fecha_inspeccion es NOT NULL → la llenamos con la misma fecha programada
     const ins = await pool.request()
       .input("camionId", sql.Int, camionId)
       .input("fecha", sql.DateTime2, fecha)
-      .input("obs", sql.NVarChar(1000), observaciones)
+      .input("obs", sql.NVarChar(sql.MAX), observaciones)
       .query(`
         INSERT INTO dbo.inspecciones
-          (camion_id, inspector_id, fecha_programada, estado, observaciones_generales)
+          (camion_id, inspector_id, fecha_inspeccion, fecha_programada, estado, observaciones_generales)
         OUTPUT INSERTED.id
         VALUES
-          (@camionId, NULL, @fecha, 'PROGRAMADA', @obs)
+          (@camionId, NULL, @fecha, @fecha, 'PROGRAMADA', @obs)
       `);
 
     return NextResponse.json(
