@@ -49,14 +49,12 @@ export async function GET(req: NextRequest) {
     }
 
     /**
-     * Asumimos que en dbo.inspecciones tienes al menos:
-     * - camion_id
-     * - fecha_inspeccion (o fecha_programada si la tuya se llama distinto)
+     * ✅ FIX 1: Solo considerar inspección vigente PROGRAMADA
+     * - Si se cancela, desaparece del OUTER APPLY => pasa a SIN_AGENDA
      *
-     * En tu captura anterior aparecía "fecha_inspe..." => usaremos fecha_inspeccion.
-     * Si en tu BD se llama distinto, dime el nombre y lo ajusto en 1 línea.
+     * ✅ FIX 2: Fechas como string "YYYY-MM-DDTHH:mm" (sin timezone)
+     * - Evita el corrimiento 27->26 y 00:00->20:00
      */
-
     const query = `
       SELECT
         c.id            AS camion_id,
@@ -66,7 +64,7 @@ export async function GET(req: NextRequest) {
         c.anio,
         c.tipo,
         c.carroceria,
-        c.created_at,
+        CONVERT(varchar(16), c.created_at, 126) AS created_at_local, -- YYYY-MM-DDTHH:mm
 
         e.id            AS empresa_id,
         e.nombre        AS empresa_nombre,
@@ -75,8 +73,9 @@ export async function GET(req: NextRequest) {
         e.telefono_contacto,
 
         ip.id           AS inspeccion_id,
-        ip.fecha_inspeccion AS fecha_programada,
-        ip.inspector_id
+        CONVERT(varchar(16), ip.fecha_programada, 126) AS fecha_programada_local, -- YYYY-MM-DDTHH:mm
+        ip.inspector_id,
+        ip.estado       AS inspeccion_estado
 
       FROM dbo.camiones c
       JOIN dbo.proveedores p ON p.id = c.proveedor_id
@@ -86,7 +85,8 @@ export async function GET(req: NextRequest) {
         SELECT TOP 1 i.*
         FROM dbo.inspecciones i
         WHERE i.camion_id = c.id
-        ORDER BY i.fecha_inspeccion DESC
+          AND i.estado = 'PROGRAMADA'
+        ORDER BY i.fecha_programada DESC
       ) ip
 
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
@@ -95,29 +95,34 @@ export async function GET(req: NextRequest) {
 
     const r = await request.query(query);
 
+    // "Ahora" en hora local del servidor SQL: usaremos un Date de Node solo para comparar
     const now = new Date();
 
     const camiones = r.recordset.map((row: any) => {
-      const fecha = row.fecha_programada ? new Date(row.fecha_programada) : null;
+      const fechaStr: string | null = row.fecha_programada_local ?? null;
 
       let ui_estado: "SIN_AGENDA" | "PROGRAMADA" | "VENCIDA" = "SIN_AGENDA";
-      if (fecha) {
-        ui_estado = fecha.getTime() >= now.getTime() ? "PROGRAMADA" : "VENCIDA";
+
+      if (fechaStr) {
+        // Fecha viene como "YYYY-MM-DDTHH:mm" => Date() lo interpreta como local
+        const d = new Date(fechaStr);
+        ui_estado = d.getTime() >= now.getTime() ? "PROGRAMADA" : "VENCIDA";
       }
 
       return {
-        id: row.camion_id,
+        id: Number(row.camion_id),
         patente: row.patente,
         marca: row.marca ?? null,
         modelo: row.modelo ?? null,
         anio: row.anio ?? null,
         tipo: row.tipo ?? null,
         carroceria: row.carroceria ?? null,
-        createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
 
-        // ✅ ahora sí nombre real de empresas
+        // ✅ createdAt local string (sin timezone)
+        createdAt: row.created_at_local ?? null,
+
         empresa: {
-          id: row.empresa_id,
+          id: Number(row.empresa_id),
           nombre: row.empresa_nombre ?? null,
           rut: row.empresa_rut ?? null,
           email: row.email_contacto ?? null,
@@ -125,17 +130,20 @@ export async function GET(req: NextRequest) {
         },
 
         ui_estado,
+
+        // ✅ solo existe si hay una PROGRAMADA vigente
         inspeccionProgramada: row.inspeccion_id
           ? {
-              id: row.inspeccion_id,
-              fechaProgramada: row.fecha_programada ? new Date(row.fecha_programada).toISOString() : null,
-              inspector: row.inspector_id ? { id: row.inspector_id, nombre: null } : null,
+              id: Number(row.inspeccion_id),
+              // ✅ fecha local string "YYYY-MM-DDTHH:mm"
+              fechaProgramada: row.fecha_programada_local ?? null,
+              inspector: row.inspector_id ? { id: Number(row.inspector_id), nombre: null } : null,
             }
           : null,
       };
     });
 
-    // ✅ Filtrar según tab de verdad
+    // Filtrar según tab
     const filtered = camiones.filter((c: any) => c.ui_estado === estado);
 
     return NextResponse.json({ ok: true, camiones: filtered }, { status: 200 });
@@ -144,3 +152,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }
+
