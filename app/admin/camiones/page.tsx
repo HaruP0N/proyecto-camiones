@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+/* =======================
+   Types
+======================= */
 type Row = {
   id: number;
   patente: string;
@@ -19,7 +22,7 @@ type Row = {
     rut: string | null;
   };
 
-  ui_estado: "SIN_AGENDA" | "PROGRAMADA" | "VENCIDA" | string;
+  ui_estado: "SIN_AGENDA" | "PROGRAMADA" | "VENCIDA";
   inspeccionProgramada: null | {
     id: number;
     fechaProgramada: string | null;
@@ -27,6 +30,9 @@ type Row = {
   };
 };
 
+/* =======================
+   Utils
+======================= */
 function formatDateLocal(iso?: string | null) {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -47,6 +53,9 @@ function toDatetimeLocalValue(d: Date) {
   )}:${pad(d.getMinutes())}`;
 }
 
+/* =======================
+   Page
+======================= */
 export default function AdminCamionesPage() {
   const router = useRouter();
 
@@ -72,6 +81,9 @@ export default function AdminCamionesPage() {
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState<string | null>(null);
 
+  /* =======================
+     Data
+  ======================= */
   const filteredRows = useMemo(() => {
     const q = query.trim().toUpperCase();
     if (!q) return rows;
@@ -110,8 +122,12 @@ export default function AdminCamionesPage() {
 
   useEffect(() => {
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  /* =======================
+     Actions
+  ======================= */
   function closeModal() {
     if (saving) return;
     setOpen(false);
@@ -150,12 +166,12 @@ export default function AdminCamionesPage() {
   }
 
   async function cancelar(row: Row) {
-    const id = Number(row.inspeccionProgramada?.id);
-    if (!Number.isInteger(id) || id <= 0) return;
+    const inspeccionId = Number(row.inspeccionProgramada?.id);
+    if (!Number.isInteger(inspeccionId) || inspeccionId <= 0) return;
 
     if (!confirm(`¿Cancelar inspección para ${row.patente}?`)) return;
 
-    const res = await fetch(`/api/admin/inspecciones/${id}`, {
+    const res = await fetch(`/api/admin/inspecciones/${inspeccionId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "CANCELAR" }),
@@ -170,7 +186,6 @@ export default function AdminCamionesPage() {
     load();
   }
 
-  // 🔴 AQUÍ ESTÁ EL DEBUG IMPORTANTE
   async function saveAgendaOrReagenda() {
     if (!selected) return;
 
@@ -209,7 +224,7 @@ export default function AdminCamionesPage() {
         body: JSON.stringify(payload),
       });
 
-      // 🔎 DEBUG COMPLETO
+      // 🔎 DEBUG
       const rawText = await res.text();
       console.log("[REAGENDAR] status:", res.status);
       console.log("[REAGENDAR] raw response:", rawText);
@@ -235,12 +250,161 @@ export default function AdminCamionesPage() {
     }
   }
 
+  /* =======================
+     Render
+  ======================= */
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ fontSize: 34, fontWeight: 900 }}>Admin · Camiones</h1>
 
-      {/* El resto del render queda IGUAL que el tuyo */}
-      {/* No lo toqué para evitar romper UX */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+        {(["SIN_AGENDA", "PROGRAMADA", "VENCIDA"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              fontWeight: 800,
+              background: tab === t ? "#111" : "#fff",
+              color: tab === t ? "#fff" : "#111",
+            }}
+          >
+            {t === "SIN_AGENDA"
+              ? "Sin agenda"
+              : t === "PROGRAMADA"
+              ? "Programadas"
+              : "Vencidas"}
+          </button>
+        ))}
+
+        <button
+          onClick={() => router.push("/")}
+          style={{
+            marginLeft: "auto",
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            fontWeight: 800,
+          }}
+        >
+          ⌂ Inicio
+        </button>
+      </div>
+
+      {error && (
+        <div style={{ color: "crimson", fontWeight: 800, marginBottom: 12 }}>
+          {error}
+        </div>
+      )}
+
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th>Patente</th>
+            <th>Marca</th>
+            <th>Empresa</th>
+            <th>Estado</th>
+            <th>Creado</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredRows.length === 0 ? (
+            <tr>
+              <td colSpan={6}>Sin resultados</td>
+            </tr>
+          ) : (
+            filteredRows.map((r) => (
+              <tr key={r.id}>
+                <td>{r.patente}</td>
+                <td>{r.marca ?? "—"}</td>
+                <td>{r.empresa?.nombre ?? "—"}</td>
+                <td>
+                  {r.ui_estado}
+                  {r.inspeccionProgramada?.fechaProgramada && (
+                    <div style={{ fontSize: 12, color: "#666" }}>
+                      {formatDateLocal(
+                        r.inspeccionProgramada.fechaProgramada
+                      )}
+                    </div>
+                  )}
+                </td>
+                <td>{formatDateLocal(r.createdAt)}</td>
+                <td>
+                  {r.ui_estado === "SIN_AGENDA" ? (
+                    <button onClick={() => openAgendarModal(r)}>
+                      Agendar
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => openReagendarModal(r)}>
+                        Reagendar
+                      </button>{" "}
+                      <button onClick={() => cancelar(r)}>Cancelar</button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* Modal */}
+      {open && selected && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={closeModal}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 12,
+              width: 420,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>{modalTitle}</h3>
+
+            <input
+              type="datetime-local"
+              value={fechaLocal}
+              onChange={(e) => setFechaLocal(e.target.value)}
+              style={{ width: "100%", marginBottom: 8 }}
+            />
+
+            <textarea
+              placeholder="Observaciones"
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+              style={{ width: "100%", marginBottom: 8 }}
+            />
+
+            {modalError && (
+              <div style={{ color: "crimson", fontWeight: 800 }}>
+                {modalError}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={closeModal}>Cancelar</button>
+              <button onClick={saveAgendaOrReagenda} disabled={saving}>
+                {saving ? "Guardando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
