@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
 
     // ✅ Defaults para columnas NOT NULL
     const ESTADO_DEFAULT = "PROGRAMADA";
-    const RESULTADO_DEFAULT = "PENDIENTE";
+    const RESULTADO_DEFAULT = "observado";
 
     const ins = await pool.request()
       .input("camionId", sql.Int, camionId)
