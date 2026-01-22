@@ -56,13 +56,14 @@ export default function AdminCamionesPage() {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
 
-  // Modal state
+  // Modal state (sirve para agendar y reagendar)
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Row | null>(null);
+  const [modalTitle, setModalTitle] = useState("Agendar inspección");
   const [fechaLocal, setFechaLocal] = useState<string>(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    d.setHours(10, 0, 0, 0); // mañana 10:00
+    d.setHours(10, 0, 0, 0);
     return toDatetimeLocalValue(d);
   });
   const [obs, setObs] = useState("");
@@ -111,11 +112,20 @@ export default function AdminCamionesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
+  function closeModal() {
+    if (saving) return;
+    setOpen(false);
+    setSelected(null);
+    setModalError(null);
+    setObs("");
+  }
+
   function openAgendarModal(row: Row) {
     setSelected(row);
     setModalError(null);
     setObs("");
-    // default fecha: mañana 10:00 cada vez que abras
+    setModalTitle("Agendar inspección");
+
     const d = new Date();
     d.setDate(d.getDate() + 1);
     d.setHours(10, 0, 0, 0);
@@ -124,15 +134,51 @@ export default function AdminCamionesPage() {
     setOpen(true);
   }
 
-  function closeModal() {
-    if (saving) return;
-    setOpen(false);
-    setSelected(null);
+  function openReagendarModal(row: Row) {
+    setSelected(row);
     setModalError(null);
+    setObs("");
+    setModalTitle("Reagendar inspección");
+
+    const iso = row.inspeccionProgramada?.fechaProgramada;
+    if (iso) {
+      const d = new Date(iso);
+      setFechaLocal(toDatetimeLocalValue(d));
+    } else {
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(10, 0, 0, 0);
+      setFechaLocal(toDatetimeLocalValue(d));
+    }
+
+    setOpen(true);
   }
 
-  async function saveAgenda() {
+  async function cancelar(row: Row) {
+    const idInspeccion = row.inspeccionProgramada?.id;
+    if (!idInspeccion) return;
+
+    const ok = confirm(`¿Cancelar inspección programada para ${row.patente}?`);
+    if (!ok) return;
+
+    const res = await fetch(`/api/admin/inspecciones/${idInspeccion}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "CANCELAR" }),
+    });
+
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      alert(data?.error ?? "No se pudo cancelar");
+      return;
+    }
+
+    await load();
+  }
+
+  async function saveAgendaOrReagenda() {
     if (!selected) return;
+
     setSaving(true);
     setModalError(null);
 
@@ -142,30 +188,42 @@ export default function AdminCamionesPage() {
         return;
       }
 
-      // datetime-local -> ISO
       const fechaIso = new Date(fechaLocal).toISOString();
 
-      const res = await fetch("/api/admin/inspecciones", {
-        method: "POST",
+      const inspeccionId = selected.inspeccionProgramada?.id;
+
+      const url = inspeccionId
+        ? `/api/admin/inspecciones/${inspeccionId}`
+        : "/api/admin/inspecciones";
+
+      const method = inspeccionId ? "PATCH" : "POST";
+
+      const payload = inspeccionId
+        ? {
+            action: "REAGENDAR",
+            fechaProgramada: fechaIso,
+            observaciones: obs.trim() ? obs.trim() : null,
+          }
+        : {
+            camionId: selected.id,
+            fechaProgramada: fechaIso,
+            observaciones: obs.trim() ? obs.trim() : null,
+          };
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          camionId: selected.id,
-          fechaProgramada: fechaIso,
-          observaciones: obs.trim() ? obs.trim() : null,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json().catch(() => null);
 
       if (!res.ok || !data?.ok) {
-        setModalError(data?.error ?? "No se pudo agendar");
+        setModalError(data?.error ?? "No se pudo guardar");
         return;
       }
 
       closeModal();
-
-      // Recarga lista:
-      // si estás en SIN_AGENDA, el camión debe desaparecer y pasar a PROGRAMADA
       await load();
     } catch (e: any) {
       setModalError(e?.message ?? "Error de red");
@@ -285,9 +343,20 @@ export default function AdminCamionesPage() {
                     <small style={{ color: "#666" }}>{r.empresa?.rut ?? ""}</small>
                   </td>
 
-                  <td style={{ padding: 12, fontWeight: 800 }}>{r.ui_estado}</td>
+                  {/* ✅ Estado + fecha programada bajo el estado */}
+                  <td style={{ padding: 12 }}>
+                    <div style={{ fontWeight: 800 }}>{r.ui_estado}</div>
+
+                    {r.ui_estado === "PROGRAMADA" && r.inspeccionProgramada?.fechaProgramada && (
+                      <small style={{ color: "#666" }}>
+                        {formatDateLocal(r.inspeccionProgramada.fechaProgramada)}
+                      </small>
+                    )}
+                  </td>
+
                   <td style={{ padding: 12 }}>{formatDateLocal(r.createdAt)}</td>
 
+                  {/* ✅ Acciones */}
                   <td style={{ padding: 12 }}>
                     {r.ui_estado === "SIN_AGENDA" ? (
                       <button
@@ -304,6 +373,36 @@ export default function AdminCamionesPage() {
                       >
                         Agendar
                       </button>
+                    ) : r.ui_estado === "PROGRAMADA" ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => openReagendarModal(r)}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 10,
+                            border: "1px solid #111",
+                            background: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Reagendar
+                        </button>
+
+                        <button
+                          onClick={() => cancelar(r)}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 10,
+                            border: "1px solid #ddd",
+                            background: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     ) : (
                       <span style={{ color: "#666" }}>—</span>
                     )}
@@ -315,7 +414,7 @@ export default function AdminCamionesPage() {
         </table>
       </div>
 
-      {/* Modal Agendar */}
+      {/* Modal (Agendar/Reagendar) */}
       {open && selected && (
         <div
           role="dialog"
@@ -344,7 +443,7 @@ export default function AdminCamionesPage() {
           >
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>Agendar inspección</div>
+                <div style={{ fontSize: 18, fontWeight: 900 }}>{modalTitle}</div>
                 <div style={{ color: "#666", marginTop: 4 }}>
                   <b>{selected.patente}</b> · {selected.empresa?.nombre ?? "—"}
                 </div>
@@ -423,7 +522,7 @@ export default function AdminCamionesPage() {
                 </button>
 
                 <button
-                  onClick={saveAgenda}
+                  onClick={saveAgendaOrReagenda}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 10,
@@ -435,7 +534,7 @@ export default function AdminCamionesPage() {
                   }}
                   disabled={saving}
                 >
-                  {saving ? "Agendando..." : "Confirmar agenda"}
+                  {saving ? "Guardando..." : "Confirmar"}
                 </button>
               </div>
             </div>
