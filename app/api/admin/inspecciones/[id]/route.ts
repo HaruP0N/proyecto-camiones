@@ -24,6 +24,21 @@ function isValidDatetimeLocal(s: unknown) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
 }
 
+// ✅ parser robusto del id (params o pathname)
+function parseInspeccionId(req: NextRequest, params?: { id?: string }) {
+  const fromParams = params?.id;
+  const fromPath = req.nextUrl.pathname.split("/").filter(Boolean).pop(); // último segmento
+
+  const raw = (fromParams ?? fromPath ?? "").trim();
+
+  // extra: si viniera algo raro, nos quedamos con dígitos
+  const onlyDigits = raw.replace(/[^\d]/g, "");
+  const n = Number(onlyDigits);
+
+  if (!Number.isInteger(n) || n <= 0) return null;
+  return n;
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = requireAdmin(req);
@@ -31,8 +46,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
     }
 
-    const inspeccionId = Number(params?.id);
-    if (!Number.isInteger(inspeccionId) || inspeccionId <= 0) {
+    const inspeccionId = parseInspeccionId(req, params);
+    if (!inspeccionId) {
       return NextResponse.json({ ok: false, error: "id inválido" }, { status: 400 });
     }
 
@@ -44,6 +59,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const action = (body as any).action;
     const pool = await getPool();
 
+    // Debe existir
     const current = await pool.request()
       .input("id", sql.Int, inspeccionId)
       .query(`
@@ -64,6 +80,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       );
     }
 
+    // ✅ CANCELAR
     if (action === "CANCELAR") {
       await pool.request()
         .input("id", sql.Int, inspeccionId)
@@ -76,6 +93,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ ok: true });
     }
 
+    // ✅ REAGENDAR (con inspector opcional)
     if (action === "REAGENDAR") {
       const fechaLocal = (body as any).fechaProgramada;
       const obs = typeof (body as any).observaciones === "string" ? (body as any).observaciones.trim() : null;
@@ -95,7 +113,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
       const fechaSql = `${fechaLocal.replace("T", " ")}:00`;
 
-      // ✅ Validar inspector robusto
+      // Validar inspector robusto
       if (inspectorId !== null) {
         const insp = await pool.request()
           .input("id", sql.Int, inspectorId)
@@ -106,6 +124,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
               AND ISNULL(activo, 0) = 1
               AND LOWER(LTRIM(RTRIM(rol))) = 'inspector'
           `);
+
         if (insp.recordset.length === 0) {
           return NextResponse.json(
             { ok: false, error: "Inspector no existe o no está activo" },
@@ -114,7 +133,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         }
       }
 
-      // Validación futura
+      // Validación futura (local)
       await pool.request()
         .input("fecha", sql.NVarChar(19), fechaSql)
         .query(`
