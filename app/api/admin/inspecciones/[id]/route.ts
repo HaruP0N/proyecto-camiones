@@ -31,11 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
     }
 
-    const idFromParams = params?.id;
-    const idFromPath = req.nextUrl.pathname.split("/").pop();
-    const idStr = idFromParams ?? idFromPath ?? "";
-    const inspeccionId = Number(idStr);
-
+    const inspeccionId = Number(params?.id);
     if (!Number.isInteger(inspeccionId) || inspeccionId <= 0) {
       return NextResponse.json({ ok: false, error: "id inválido" }, { status: 400 });
     }
@@ -99,7 +95,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
       const fechaSql = `${fechaLocal.replace("T", " ")}:00`;
 
-      // Si viene inspector, validar
+      // ✅ Validar inspector robusto
       if (inspectorId !== null) {
         const insp = await pool.request()
           .input("id", sql.Int, inspectorId)
@@ -107,15 +103,18 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
             SELECT TOP 1 id
             FROM dbo.usuarios
             WHERE id = @id
-              AND activo = 1
-              AND rol = 'operador'
+              AND ISNULL(activo, 0) = 1
+              AND LOWER(LTRIM(RTRIM(rol))) = 'inspector'
           `);
         if (insp.recordset.length === 0) {
-          return NextResponse.json({ ok: false, error: "Inspector no existe o no está activo" }, { status: 404 });
+          return NextResponse.json(
+            { ok: false, error: "Inspector no existe o no está activo" },
+            { status: 404 }
+          );
         }
       }
 
-      // Validación futura en SQL
+      // Validación futura
       await pool.request()
         .input("fecha", sql.NVarChar(19), fechaSql)
         .query(`

@@ -39,7 +39,8 @@ export async function POST(req: NextRequest) {
     const camionId = (body as any).camionId;
     const fechaLocal = (body as any).fechaProgramada;
     const inspectorIdRaw = (body as any).inspectorId;
-    const observaciones = typeof (body as any).observaciones === "string" ? (body as any).observaciones.trim() : null;
+    const observaciones =
+      typeof (body as any).observaciones === "string" ? (body as any).observaciones.trim() : null;
 
     if (!Number.isInteger(camionId) || camionId <= 0) {
       return NextResponse.json({ ok: false, error: "camionId inválido" }, { status: 400 });
@@ -69,7 +70,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Camión no existe" }, { status: 404 });
     }
 
-    // Verificar inspector si viene
+    // ✅ Verificar inspector (robusto: trim+lower y activo)
     if (inspectorId !== null) {
       const insp = await pool.request()
         .input("id", sql.Int, inspectorId)
@@ -77,12 +78,15 @@ export async function POST(req: NextRequest) {
           SELECT TOP 1 id
           FROM dbo.usuarios
           WHERE id = @id
-            AND activo = 1
-            AND rol = 'operador'
+            AND ISNULL(activo, 0) = 1
+            AND LOWER(LTRIM(RTRIM(rol))) = 'inspector'
         `);
 
       if (insp.recordset.length === 0) {
-        return NextResponse.json({ ok: false, error: "Inspector no existe o no está activo" }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "Inspector no existe o no está activo" },
+          { status: 404 }
+        );
       }
     }
 
@@ -104,7 +108,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validación futura en SQL
+    // Validación futura en SQL (local)
     await pool.request()
       .input("fecha", sql.NVarChar(19), fechaSql)
       .query(`
