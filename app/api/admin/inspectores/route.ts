@@ -29,12 +29,12 @@ export async function GET(req: NextRequest) {
 
     const pool = await getPool();
 
-    // ✅ Usamos rol='operador' como "inspector"
+    // ✅ Robustez: trims + lowercase (evita problemas por espacios o mayúsculas)
     const r = await pool.request().query(`
       SELECT id, nombre, email
       FROM dbo.usuarios
-      WHERE activo = 1
-        AND rol = 'operador'
+      WHERE ISNULL(activo, 0) = 1
+        AND LOWER(LTRIM(RTRIM(rol))) = 'inspector'
       ORDER BY nombre ASC
     `);
 
