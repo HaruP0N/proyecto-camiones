@@ -1,0 +1,248 @@
+"use client";
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+
+type Truck = {
+  id: number;
+  patente: string;
+  foto_url?: string | null;
+};
+
+type PhotoState = {
+  file: File;
+  previewUrl: string;
+};
+
+export function TruckPhotosForm() {
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [trucks, setTrucks] = useState<Truck[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [photosByTruckId, setPhotosByTruckId] = useState<Record<number, PhotoState | undefined>>({});
+  const fileInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+
+        const res = await fetch(`/api/fleet`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) throw new Error(data?.error || "Error al cargar camiones");
+
+        setTrucks(data?.trucks ?? []);
+      } catch (err) {
+        toast({
+          title: "Error",
+          description: err instanceof Error ? err.message : "No se pudieron cargar los camiones",
+          variant: "destructive",
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [toast]);
+
+  const totalRequired = trucks.length;
+
+  const totalSelected = useMemo(() => {
+    return trucks.reduce((acc, t) => acc + (photosByTruckId[t.id] ? 1 : 0), 0);
+  }, [trucks, photosByTruckId]);
+
+  const allSelected = totalRequired > 0 && totalSelected === totalRequired;
+
+  const handlePickFile = (truckId: number, file: File | null) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Archivo inválido",
+        description: "Debe ser una imagen (jpg, png, etc.)",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const previewUrl = URL.createObjectURL(file);
+
+    const prev = photosByTruckId[truckId];
+    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+
+    setPhotosByTruckId((p) => ({
+      ...p,
+      [truckId]: { file, previewUrl },
+    }));
+  };
+
+  const handleRemove = (truckId: number) => {
+    const prev = photosByTruckId[truckId];
+    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+
+    setPhotosByTruckId((p) => {
+      const copy = { ...p };
+      delete copy[truckId];
+      return copy;
+    });
+
+    const input = fileInputRefs.current[truckId];
+    if (input) input.value = "";
+  };
+
+  const openPicker = (truckId: number) => {
+    const input = fileInputRefs.current[truckId];
+    if (!input) {
+      toast({
+        title: "Error",
+        description: "No se pudo abrir el selector de archivos.",
+        variant: "destructive",
+      });
+      return;
+    }
+    input.click();
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(photosByTruckId).forEach((x) => {
+        if (x?.previewUrl) URL.revokeObjectURL(x.previewUrl);
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSave = async () => {
+    if (trucks.length === 0) {
+      toast({ title: "Sin camiones", description: "No hay camiones para subir fotos.", variant: "destructive" });
+      return;
+    }
+    if (!allSelected) {
+      toast({
+        title: "Faltan fotos",
+        description: `Has seleccionado ${totalSelected}/${totalRequired}. Debe haber 1 foto por camión.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      for (const t of trucks) {
+        const photo = photosByTruckId[t.id];
+        if (!photo) continue;
+
+        const fakeUrl = `pending-upload://${t.patente}`;
+
+        const res = await fetch("/api/truck-photo", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ camionId: t.id, url: fakeUrl }),
+        });
+
+        const data = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(data?.error || `Error guardando foto de ${t.patente}`);
+      }
+
+      toast({ title: "Listo", description: "Fotos registradas (pendiente subir a storage real)." });
+      router.push("/login");
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: err instanceof Error ? err.message : "No se pudieron guardar las fotos",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-4">Cargando camiones...</div>;
+
+  return (
+    <Card className="shadow-xl">
+      <CardHeader>
+        <CardTitle>Fotos por Camión</CardTitle>
+        <CardDescription>
+          1 foto por camión (ideal vista 3/4). Progreso: {totalSelected}/{totalRequired}
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {trucks.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No hay camiones registrados para esta empresa.</p>
+        ) : (
+          trucks.map((t) => {
+            const photo = photosByTruckId[t.id];
+
+            return (
+              <div key={t.id} className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">Patente</p>
+                    <p className="text-sm text-muted-foreground">{t.patente}</p>
+                    {t.foto_url ? (
+                      <p className="text-xs text-muted-foreground mt-1">Ya existe una foto registrada en el sistema.</p>
+                    ) : null}
+                  </div>
+
+                  <div className="flex gap-2">
+                    {photo ? (
+                      <Button type="button" variant="outline" onClick={() => handleRemove(t.id)}>
+                        Quitar
+                      </Button>
+                    ) : null}
+
+                    <Button type="button" onClick={() => openPicker(t.id)}>
+                      {photo ? "Cambiar foto" : "Seleccionar foto"}
+                    </Button>
+                  </div>
+                </div>
+
+                {photo ? (
+                  <div className="relative w-full h-56 rounded-md overflow-hidden border">
+                    <Image src={photo.previewUrl} alt={`Foto ${t.patente}`} fill className="object-contain bg-white" />
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Aún no seleccionas una foto.</div>
+                )}
+
+                <input
+                  ref={(el) => {
+                    fileInputRefs.current[t.id] = el;
+                  }}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => handlePickFile(t.id, e.target.files?.[0] ?? null)}
+                />
+
+                {photo?.file?.name ? <p className="text-xs text-muted-foreground">Archivo: {photo.file.name}</p> : null}
+              </div>
+            );
+          })
+        )}
+
+        <Button className="w-full" onClick={handleSave} disabled={saving || trucks.length === 0}>
+          {saving ? "Guardando..." : "Guardar fotos"}
+        </Button>
+
+        <p className="text-xs text-muted-foreground">
+          Nota: por ahora se guarda un marcador (pending-upload://...). Cuando definan almacenamiento, se reemplaza por
+          subida real + URL.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
