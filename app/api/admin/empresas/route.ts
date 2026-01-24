@@ -1,6 +1,6 @@
 // app/api/admin/empresas/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/staff-auth";
+import { requireAdmin } from "@/lib/shared/security/staff-auth";
 import { getPool, sql } from "@/lib/azure-sql";
 
 export const runtime = "nodejs";

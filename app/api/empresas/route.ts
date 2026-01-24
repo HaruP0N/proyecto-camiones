@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getPool, sql } from "@/lib/azure-sql"
-import { hashPin, isValidPin } from "@/lib/pin"
+import { hashPin, isValidPin } from "@/lib/shared/utils/pin"
 
 export async function POST(request: NextRequest) {
   try {

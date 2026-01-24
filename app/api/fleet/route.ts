@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, sql } from "@/lib/azure-sql";
-import { requireCliente } from "@/lib/cliente-auth";
+import { requireCliente } from "@/lib/shared/security/cliente-auth";
 
 export const runtime = "nodejs";
 

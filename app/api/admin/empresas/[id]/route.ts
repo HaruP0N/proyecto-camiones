@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
-import { requireAdmin } from "@/lib/staff-auth";
+import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
 

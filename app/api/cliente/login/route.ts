@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { getPool, sql } from "@/lib/azure-sql";
-import { isValidPin, verifyPin } from "@/lib/pin";
+import { isValidPin, verifyPin } from "@/lib/shared/utils/pin";
 
 export const runtime = "nodejs";
 

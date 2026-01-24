@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
-import { requireAdmin } from "@/lib/staff-auth";
-import { hashPin } from "@/lib/pin";
+import { requireAdmin } from "@/lib/shared/security/staff-auth";
+import { hashPin } from "@/lib/shared/utils/pin";
 
 export const runtime = "nodejs";
 
