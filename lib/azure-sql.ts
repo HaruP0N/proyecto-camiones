@@ -1,36 +1,43 @@
-import sql from "mssql"
+// lib/azure-sql.ts
+import sql from "mssql";
+export { sql };
 
-// Configuración de conexión a Azure SQL
-const config: sql.config = {
-  user: process.env.AZURE_SQL_USER!,
-  password: process.env.AZURE_SQL_PASSWORD!,
-  server: process.env.AZURE_SQL_SERVER!,
-  database: process.env.AZURE_SQL_DATABASE!,
-  options: {
-    encrypt: true, // Azure SQL requiere conexiones encriptadas
-    trustServerCertificate: false,
-  },
-  pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000,
-  },
+declare global {
+  // eslint-disable-next-line no-var
+  var __mssqlPoolPromise: Promise<sql.ConnectionPool> | undefined;
 }
 
-let pool: sql.ConnectionPool | null = null
+export function getPool() {
+  if (!global.__mssqlPoolPromise) {
+    const server = (process.env.AZURE_SQL_SERVER || "").trim();
+    const database = (process.env.AZURE_SQL_DATABASE || "").trim();
+    const user = (process.env.AZURE_SQL_USER || "").trim();
+    const password = process.env.AZURE_SQL_PASSWORD || "";
 
-export async function getPool() {
-  if (!pool) {
-    pool = await sql.connect(config)
+    if (!server || !database || !user || !password) {
+      throw new Error(
+        "Faltan envs: AZURE_SQL_SERVER / AZURE_SQL_DATABASE / AZURE_SQL_USER / AZURE_SQL_PASSWORD"
+      );
+    }
+
+    const isProd = process.env.NODE_ENV === "production";
+
+    global.__mssqlPoolPromise = new sql.ConnectionPool({
+      user,
+      password,
+      server,
+      database,
+      port: 1433,
+      options: {
+        encrypt: true,
+        // ✅ en PROD false, en DEV true para evitar problemas de TLS local
+        trustServerCertificate: !isProd,
+      },
+      connectionTimeout: 60000,
+      requestTimeout: 60000,
+      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
+    }).connect();
   }
-  return pool
-}
 
-export async function closePool() {
-  if (pool) {
-    await pool.close()
-    pool = null
-  }
+  return global.__mssqlPoolPromise;
 }
-
-export { sql }

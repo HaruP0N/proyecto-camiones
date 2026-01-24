@@ -45,7 +45,7 @@ export default function LoginPage() {
 
       if (rol === "admin") {
         // Forzar navegación (evita edge cases con router en dev)
-        window.location.href = "/admin/camiones";
+        window.location.href = "/admin";
         return;
       }
 

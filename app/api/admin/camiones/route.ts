@@ -43,12 +43,22 @@ export async function GET(req: NextRequest) {
     const request = pool.request();
 
     const where: string[] = [];
+
     if (patente) {
       request.input("patente", sql.VarChar(20), normalizePatente(patente));
       where.push("c.patente = @patente");
     }
 
-    // ✅ Traemos inspector nombre/email con LEFT JOIN
+    // 👇 Filtrado por estado ya en SQL (mejor performance)
+    // Nota: comparo con SYSDATETIME() (hora del servidor SQL). Sin timezone, consistente.
+    if (estado === "SIN_AGENDA") {
+      where.push("ip.id IS NULL");
+    } else if (estado === "PROGRAMADA") {
+      where.push("ip.id IS NOT NULL AND ip.fecha_programada >= SYSDATETIME()");
+    } else if (estado === "VENCIDA") {
+      where.push("ip.id IS NOT NULL AND ip.fecha_programada < SYSDATETIME()");
+    }
+
     const query = `
       SELECT
         c.id            AS camion_id,
@@ -90,6 +100,10 @@ export async function GET(req: NextRequest) {
     `;
 
     const r = await request.query(query);
+
+    // ✅ Ya no necesito "now" para filtrar, pero sí para construir ui_estado de manera consistente.
+    // Uso la misma lógica que SQL (SYSDATETIME). Como no puedo leer SYSDATETIME() en node,
+    // lo calculo igual que antes para la UI. Esto NO afecta filtro (ya filtró SQL).
     const now = new Date();
 
     const camiones = r.recordset.map((row: any) => {
@@ -97,7 +111,7 @@ export async function GET(req: NextRequest) {
 
       let ui_estado: "SIN_AGENDA" | "PROGRAMADA" | "VENCIDA" = "SIN_AGENDA";
       if (fechaStr) {
-        const d = new Date(fechaStr); // local
+        const d = new Date(fechaStr); // "YYYY-MM-DDTHH:mm" -> local
         ui_estado = d.getTime() >= now.getTime() ? "PROGRAMADA" : "VENCIDA";
       }
 
@@ -133,11 +147,9 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    const filtered = camiones.filter((c: any) => c.ui_estado === estado);
-    return NextResponse.json({ ok: true, camiones: filtered }, { status: 200 });
+    return NextResponse.json({ ok: true, camiones }, { status: 200 });
   } catch (err) {
     console.error("GET /api/admin/camiones error:", err);
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }
-

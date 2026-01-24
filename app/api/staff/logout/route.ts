@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 export async function POST() {
-  const res = NextResponse.json({ ok: true }, { status: 200 });
-
+  const res = NextResponse.json({ ok: true });
   res.cookies.set("petran_staff", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -12,6 +9,5 @@ export async function POST() {
     path: "/",
     maxAge: 0,
   });
-
   return res;
 }

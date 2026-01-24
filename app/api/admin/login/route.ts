@@ -1,8 +1,9 @@
-// app/api/admin/login/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+
+export const runtime = "nodejs";
 
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
 
@@ -14,6 +15,9 @@ function getPool() {
       server: process.env.AZURE_SQL_SERVER!,
       database: process.env.AZURE_SQL_DATABASE!,
       options: { encrypt: true, trustServerCertificate: false },
+      connectionTimeout: 30000,
+      requestTimeout: 30000,
+      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
     }).connect();
   }
   return poolPromise;
@@ -23,6 +27,11 @@ function normalizeEmail(e: string) {
   return e.trim().toLowerCase();
 }
 
+function getSecret() {
+  // ✅ ideal: STAFF_JWT_SECRET
+  return process.env.STAFF_JWT_SECRET || process.env.ADMIN_JWT_SECRET || "";
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => null);
@@ -30,23 +39,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Body inválido" }, { status: 400 });
     }
 
-    const emailRaw = body.email;
-    const passwordRaw = body.password;
+    const emailRaw = (body as any).email;
+    const passwordRaw = (body as any).password;
 
     if (typeof emailRaw !== "string" || typeof passwordRaw !== "string") {
-      return NextResponse.json({ ok: false, error: "Email y password son obligatorios" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Email y password son obligatorios" },
+        { status: 400 }
+      );
     }
 
     const email = normalizeEmail(emailRaw);
     const password = passwordRaw;
 
+    const secret = getSecret();
+    if (!secret) {
+      return NextResponse.json(
+        { ok: false, error: "Falta configurar STAFF_JWT_SECRET (o ADMIN_JWT_SECRET)" },
+        { status: 500 }
+      );
+    }
+
     const pool = await getPool();
-    const r = await pool.request()
+
+    const r = await pool
+      .request()
       .input("email", sql.VarChar(255), email)
       .query(`
         SELECT TOP 1 id, nombre, email, password_hash, rol, activo
         FROM dbo.usuarios
-        WHERE email = @email
+        WHERE LOWER(LTRIM(RTRIM(email))) = @email
       `);
 
     if (r.recordset.length === 0) {
@@ -55,27 +77,34 @@ export async function POST(req: NextRequest) {
 
     const u = r.recordset[0] as any;
 
-    if (!u.activo) return NextResponse.json({ ok: false, error: "Usuario inactivo" }, { status: 403 });
-    if (u.rol !== "admin") return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
-
-    const ok = bcrypt.compareSync(password, u.password_hash);
-    if (!ok) return NextResponse.json({ ok: false, error: "Email o contraseña incorrectos" }, { status: 401 });
-
-    const secret = process.env.ADMIN_JWT_SECRET;
-    if (!secret) {
-      return NextResponse.json({ ok: false, error: "Falta configurar ADMIN_JWT_SECRET" }, { status: 500 });
+    const activo = u?.activo === true || u?.activo === 1;
+    if (!activo) {
+      return NextResponse.json({ ok: false, error: "Usuario inactivo" }, { status: 403 });
     }
 
+    // ✅ admin login: SOLO admins
+    if (String(u?.rol).trim().toLowerCase() !== "admin") {
+      return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 403 });
+    }
+
+    const hash = String(u?.password_hash ?? "");
+    const passOk = await bcrypt.compare(password, hash);
+    if (!passOk) {
+      return NextResponse.json({ ok: false, error: "Email o contraseña incorrectos" }, { status: 401 });
+    }
+
+    // ✅ Token staff (cookie petran_staff)
     const token = jwt.sign({ sub: u.id, rol: "admin" }, secret, { expiresIn: "7d" });
 
-    const res = NextResponse.json({
-      ok: true,
-      user: { id: u.id, nombre: u.nombre, email: u.email, rol: u.rol },
-    });
+    const res = NextResponse.json(
+      { ok: true, user: { id: u.id, nombre: u.nombre, email: u.email, rol: "admin" } },
+      { status: 200 }
+    );
 
-    res.cookies.set("petran_admin", token, {
+    // ✅ IMPORTANTE: secure depende del entorno (para localhost)
+    res.cookies.set("petran_staff", token, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
@@ -87,4 +116,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }
-

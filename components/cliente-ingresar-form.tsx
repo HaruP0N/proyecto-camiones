@@ -18,17 +18,20 @@ export function ClienteIngresarForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
+
     try {
-      const res = await fetch("/api/cliente-auth", {
+      const res = await fetch("/api/cliente/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rut: rut.trim(), pin: pin.trim() }),
+        credentials: "include", // ✅ importante para que se guarde la cookie httpOnly
       })
-      const data = await res.json()
+
+      const data = await res.json().catch(() => null)
       if (!res.ok) throw new Error(data?.error || "No se pudo ingresar")
 
       toast({ title: "Listo", description: "Acceso validado. Redirigiendo..." })
-      router.push(`/cliente/flota?empresaId=${data.empresaId}`)
+      router.push("/cliente/flota")
     } catch (err) {
       toast({
         title: "Error",
@@ -51,7 +54,12 @@ export function ClienteIngresarForm() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="rut">RUT</Label>
-            <Input id="rut" value={rut} onChange={(e) => setRut(e.target.value)} placeholder="Ej: 12.345.678-9" />
+            <Input
+              id="rut"
+              value={rut}
+              onChange={(e) => setRut(e.target.value)}
+              placeholder="Ej: 12.345.678-9"
+            />
           </div>
 
           <div className="space-y-2">

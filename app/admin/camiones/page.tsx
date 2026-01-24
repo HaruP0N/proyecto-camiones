@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import AdminShell from "../_components/AdminShell";
 
 type Row = {
   id: number;
@@ -50,9 +51,9 @@ function formatDateLocal(value?: string | null) {
 
 function toDatetimeLocalValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
 }
 
 export default function AdminCamionesPage() {
@@ -293,343 +294,331 @@ export default function AdminCamionesPage() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
-        <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>Admin · Camiones</h1>
+    <AdminShell title="Agenda" subtitle="Vista actual (sin cambios).">
+      <div style={{ padding: 24 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          <h1 style={{ fontSize: 34, fontWeight: 900, margin: 0 }}>Admin · Camiones</h1>
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-          <input
-            placeholder="Buscar por patente..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{
-              width: 300,
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-            }}
-          />
-          <button
-            onClick={load}
-            disabled={loading}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              fontWeight: 800,
-              cursor: loading ? "not-allowed" : "pointer",
-              background: "#fff",
-            }}
-          >
-            {loading ? "Cargando..." : "Actualizar"}
-          </button>
+          <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
+            <input
+              placeholder="Buscar por patente..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{
+                width: 300,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+              }}
+            />
+            <button
+              onClick={load}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                fontWeight: 800,
+                cursor: loading ? "not-allowed" : "pointer",
+                background: "#fff",
+              }}
+            >
+              {loading ? "Cargando..." : "Actualizar"}
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-        {(["SIN_AGENDA", "PROGRAMADA", "VENCIDA"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 12,
-              border: "1px solid #ddd",
-              fontWeight: 800,
-              background: tab === t ? "#111" : "#fff",
-              color: tab === t ? "#fff" : "#111",
-              cursor: "pointer",
-            }}
-          >
-            {t === "SIN_AGENDA" ? "Sin agenda" : t === "PROGRAMADA" ? "Programadas" : "Vencidas"}
-          </button>
-        ))}
+        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          {(["SIN_AGENDA", "PROGRAMADA", "VENCIDA"] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 12,
+                border: "1px solid #ddd",
+                fontWeight: 800,
+                background: tab === t ? "#111" : "#fff",
+                color: tab === t ? "#fff" : "#111",
+                cursor: "pointer",
+              }}
+            >
+              {t === "SIN_AGENDA" ? "Sin agenda" : t === "PROGRAMADA" ? "Programadas" : "Vencidas"}
+            </button>
+          ))}
 
-        <button
-          onClick={() => router.push("/")}
-          style={{
-            marginLeft: "auto",
-            padding: "10px 14px",
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            fontWeight: 800,
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          ⌂ Inicio
-        </button>
-      </div>
+        </div>
 
-      {error && <div style={{ color: "crimson", fontWeight: 800, marginBottom: 12 }}>{error}</div>}
+        {error && <div style={{ color: "crimson", fontWeight: 800, marginBottom: 12 }}>{error}</div>}
 
-      <div style={{ border: "1px solid #eee", borderRadius: 14, overflow: "hidden" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "#fafafa" }}>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Patente</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Marca / Modelo</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Año</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Carrocería</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Empresa</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Estado</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Creado</th>
-              <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Acción</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td colSpan={8} style={{ padding: 16, color: "#666" }}>
-                  {loading ? "Cargando..." : "Sin resultados"}
-                </td>
+        <div style={{ border: "1px solid #eee", borderRadius: 14, overflow: "hidden" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "#fafafa" }}>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Patente</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Marca / Modelo</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Año</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Carrocería</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Empresa</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Estado</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Creado</th>
+                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Acción</th>
               </tr>
-            ) : (
-              filteredRows.map((r) => (
-                <tr key={r.id} style={{ borderTop: "1px solid #eee" }}>
-                  <td style={{ padding: 12, fontWeight: 900 }}>{r.patente}</td>
+            </thead>
 
-                  <td style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 800 }}>{r.marca ?? "—"}</div>
-                    <small style={{ color: "#666" }}>{r.modelo ?? ""}</small>
-                  </td>
-
-                  <td style={{ padding: 12 }}>{r.anio ?? "—"}</td>
-                  <td style={{ padding: 12 }}>{r.carroceria ?? "—"}</td>
-
-                  <td style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 800 }}>{r.empresa?.nombre ?? "—"}</div>
-                    <small style={{ color: "#666" }}>{r.empresa?.rut ?? ""}</small>
-                  </td>
-
-                  <td style={{ padding: 12 }}>
-                    <div style={{ fontWeight: 800 }}>{r.ui_estado}</div>
-
-                    {r.ui_estado === "PROGRAMADA" && r.inspeccionProgramada?.fechaProgramada && (
-                      <small style={{ color: "#666" }}>
-                        {formatDateLocal(r.inspeccionProgramada.fechaProgramada)}
-                        {r.inspeccionProgramada.inspector?.nombre
-                          ? ` · ${r.inspeccionProgramada.inspector.nombre}`
-                          : ""}
-                      </small>
-                    )}
-                  </td>
-
-                  <td style={{ padding: 12 }}>{formatDateLocal(r.createdAt)}</td>
-
-                  <td style={{ padding: 12 }}>
-                    {r.ui_estado === "SIN_AGENDA" ? (
-                      <button
-                        onClick={() => openAgendarModal(r)}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "#fff",
-                          fontWeight: 900,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Agendar
-                      </button>
-                    ) : r.ui_estado === "PROGRAMADA" ? (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          onClick={() => openReagendarModal(r)}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 10,
-                            border: "1px solid #111",
-                            background: "#fff",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Reagendar
-                        </button>
-
-                        <button
-                          onClick={() => cancelar(r)}
-                          style={{
-                            padding: "8px 10px",
-                            borderRadius: 10,
-                            border: "1px solid #ddd",
-                            background: "#fff",
-                            fontWeight: 900,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    ) : (
-                      <span style={{ color: "#666" }}>—</span>
-                    )}
+            <tbody>
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ padding: 16, color: "#666" }}>
+                    {loading ? "Cargando..." : "Sin resultados"}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : (
+                filteredRows.map((r) => (
+                  <tr key={r.id} style={{ borderTop: "1px solid #eee" }}>
+                    <td style={{ padding: 12, fontWeight: 900 }}>{r.patente}</td>
 
-      {/* Modal (Agendar/Reagendar) */}
-      {open && selected && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={closeModal}
-        >
+                    <td style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 800 }}>{r.marca ?? "—"}</div>
+                      <small style={{ color: "#666" }}>{r.modelo ?? ""}</small>
+                    </td>
+
+                    <td style={{ padding: 12 }}>{r.anio ?? "—"}</td>
+                    <td style={{ padding: 12 }}>{r.carroceria ?? "—"}</td>
+
+                    <td style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 800 }}>{r.empresa?.nombre ?? "—"}</div>
+                      <small style={{ color: "#666" }}>{r.empresa?.rut ?? ""}</small>
+                    </td>
+
+                    <td style={{ padding: 12 }}>
+                      <div style={{ fontWeight: 800 }}>{r.ui_estado}</div>
+
+                      {r.ui_estado === "PROGRAMADA" && r.inspeccionProgramada?.fechaProgramada && (
+                        <small style={{ color: "#666" }}>
+                          {formatDateLocal(r.inspeccionProgramada.fechaProgramada)}
+                          {r.inspeccionProgramada.inspector?.nombre
+                            ? ` · ${r.inspeccionProgramada.inspector.nombre}`
+                            : ""}
+                        </small>
+                      )}
+                    </td>
+
+                    <td style={{ padding: 12 }}>{formatDateLocal(r.createdAt)}</td>
+
+                    <td style={{ padding: 12 }}>
+                      {r.ui_estado === "SIN_AGENDA" ? (
+                        <button
+                          onClick={() => openAgendarModal(r)}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #111",
+                            background: "#111",
+                            color: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Agendar
+                        </button>
+                      ) : r.ui_estado === "PROGRAMADA" ? (
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            onClick={() => openReagendarModal(r)}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 10,
+                              border: "1px solid #111",
+                              background: "#fff",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Reagendar
+                          </button>
+
+                          <button
+                            onClick={() => cancelar(r)}
+                            style={{
+                              padding: "8px 10px",
+                              borderRadius: 10,
+                              border: "1px solid #ddd",
+                              background: "#fff",
+                              fontWeight: 900,
+                              cursor: "pointer",
+                            }}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ color: "#666" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Modal (Agendar/Reagendar) */}
+        {open && selected && (
           <div
+            role="dialog"
+            aria-modal="true"
             style={{
-              width: "min(560px, 100%)",
-              background: "#fff",
-              borderRadius: 16,
-              border: "1px solid #eee",
-              padding: 18,
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+              zIndex: 50,
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={closeModal}
           >
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <div>
-                <div style={{ fontSize: 18, fontWeight: 900 }}>{modalTitle}</div>
-                <div style={{ color: "#666", marginTop: 4 }}>
-                  <b>{selected.patente}</b> · {selected.empresa?.nombre ?? "—"}
+            <div
+              style={{
+                width: "min(560px, 100%)",
+                background: "#fff",
+                borderRadius: 16,
+                border: "1px solid #eee",
+                padding: 18,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 900 }}>{modalTitle}</div>
+                  <div style={{ color: "#666", marginTop: 4 }}>
+                    <b>{selected.patente}</b> · {selected.empresa?.nombre ?? "—"}
+                  </div>
                 </div>
-              </div>
 
-              <button
-                onClick={closeModal}
-                style={{
-                  marginLeft: "auto",
-                  border: "1px solid #ddd",
-                  background: "#fff",
-                  borderRadius: 10,
-                  padding: "8px 10px",
-                  fontWeight: 900,
-                  cursor: saving ? "not-allowed" : "pointer",
-                }}
-                disabled={saving}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
-              <div>
-                <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
-                  Fecha y hora
-                </label>
-                <input
-                  type="datetime-local"
-                  value={fechaLocal}
-                  onChange={(e) => setFechaLocal(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                  }}
-                  disabled={saving}
-                />
-              </div>
-
-              {/* ✅ Inspector a cargo */}
-              <div>
-                <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
-                  Inspector a cargo (opcional)
-                </label>
-                <select
-                  value={inspectorId}
-                  onChange={(e) => setInspectorId(e.target.value)}
-                  disabled={saving || loadingInspectores}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                    background: "#fff",
-                  }}
-                >
-                  <option value="">
-                    {loadingInspectores ? "Cargando inspectores..." : "Sin asignar"}
-                  </option>
-                  {inspectores.map((i) => (
-                    <option key={i.id} value={String(i.id)}>
-                      {i.nombre ?? `Inspector #${i.id}`}{i.email ? ` · ${i.email}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
-                  Observaciones (opcional)
-                </label>
-                <textarea
-                  value={obs}
-                  onChange={(e) => setObs(e.target.value)}
-                  rows={3}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                  }}
-                  disabled={saving}
-                />
-              </div>
-
-              {modalError && <div style={{ color: "crimson", fontWeight: 800 }}>{modalError}</div>}
-
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <button
                   onClick={closeModal}
                   style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
+                    marginLeft: "auto",
                     border: "1px solid #ddd",
                     background: "#fff",
-                    fontWeight: 900,
-                    cursor: saving ? "not-allowed" : "pointer",
-                  }}
-                  disabled={saving}
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  onClick={saveAgendaOrReagenda}
-                  style={{
-                    padding: "10px 12px",
                     borderRadius: 10,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "#fff",
+                    padding: "8px 10px",
                     fontWeight: 900,
                     cursor: saving ? "not-allowed" : "pointer",
                   }}
                   disabled={saving}
                 >
-                  {saving ? "Guardando..." : "Confirmar"}
+                  ✕
                 </button>
+              </div>
+
+              <div style={{ marginTop: 14, display: "grid", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
+                    Fecha y hora
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={fechaLocal}
+                    onChange={(e) => setFechaLocal(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                    }}
+                    disabled={saving}
+                  />
+                </div>
+
+                {/* ✅ Inspector a cargo */}
+                <div>
+                  <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
+                    Inspector a cargo (opcional)
+                  </label>
+                  <select
+                    value={inspectorId}
+                    onChange={(e) => setInspectorId(e.target.value)}
+                    disabled={saving || loadingInspectores}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                    }}
+                  >
+                    <option value="">
+                      {loadingInspectores ? "Cargando inspectores..." : "Sin asignar"}
+                    </option>
+                    {inspectores.map((i) => (
+                      <option key={i.id} value={String(i.id)}>
+                        {i.nombre ?? `Inspector #${i.id}`}{i.email ? ` · ${i.email}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontWeight: 800, marginBottom: 6 }}>
+                    Observaciones (opcional)
+                  </label>
+                  <textarea
+                    value={obs}
+                    onChange={(e) => setObs(e.target.value)}
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                    }}
+                    disabled={saving}
+                  />
+                </div>
+
+                {modalError && <div style={{ color: "crimson", fontWeight: 800 }}>{modalError}</div>}
+
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button
+                    onClick={closeModal}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                      background: "#fff",
+                      fontWeight: 900,
+                      cursor: saving ? "not-allowed" : "pointer",
+                    }}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    onClick={saveAgendaOrReagenda}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "#fff",
+                      fontWeight: 900,
+                      cursor: saving ? "not-allowed" : "pointer",
+                    }}
+                    disabled={saving}
+                  >
+                    {saving ? "Guardando..." : "Confirmar"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </AdminShell>
   );
 }

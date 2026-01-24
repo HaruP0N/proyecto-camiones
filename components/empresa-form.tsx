@@ -1,40 +1,41 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
-import { useToast } from "@/hooks/use-toast"
+import type React from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
 
 interface FormData {
-  nombre: string
-  rut: string
-  rubro: string
-  productos_transportados: string
-  telefono_contacto: string
-  email_contacto: string
-  direccion: string
-  prioridad_frio: boolean
-  prioridad_carroceria: boolean
-  prioridad_estructura: boolean
-  prioridad_camion: boolean
-  prioridad_acople: boolean
-  pin: string // ✅ nuevo
+  nombre: string;
+  rut: string;
+  rubro: string;
+  productos_transportados: string;
+  telefono_contacto: string;
+  email_contacto: string;
+  direccion: string;
+  prioridad_frio: boolean;
+  prioridad_carroceria: boolean;
+  prioridad_estructura: boolean;
+  prioridad_camion: boolean;
+  prioridad_acople: boolean;
+  pin: string;
 }
 
 function isValidPin(pin: string) {
-  return /^\d{4}$/.test(pin.trim())
+  return /^\d{4}$/.test(pin.trim());
 }
 
 export function EmpresaForm() {
-  const router = useRouter()
-  const { toast } = useToast()
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const router = useRouter();
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [formData, setFormData] = useState<FormData>({
     nombre: "",
     rut: "",
@@ -49,70 +50,93 @@ export function EmpresaForm() {
     prioridad_camion: false,
     prioridad_acople: false,
     pin: "",
-  })
+  });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
-  }
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
 
   const handleCheckboxChange = (name: keyof FormData, checked: boolean) => {
-    setFormData((prev) => ({ ...prev, [name]: checked }))
-  }
+    setFormData((prev) => ({ ...prev, [name]: checked }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
+    e.preventDefault();
+    setIsSubmitting(true);
 
     try {
-      if (!isValidPin(formData.pin)) {
-        throw new Error("PIN inválido. Debe ser de 4 dígitos.")
-      }
+      const rut = formData.rut.trim();
+      const pin = formData.pin.trim();
 
+      if (!rut) throw new Error("RUT es requerido.");
+      if (!isValidPin(pin)) throw new Error("PIN inválido. Debe ser de 4 dígitos.");
+
+      // 1) Crear empresa
       const response = await fetch("/api/empresas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
-      })
+      });
 
-      const result = await response.json()
+      const result = await response.json().catch(() => null);
 
-      if (response.ok) {
-        const empresaId = result?.id
+      if (!response.ok) {
+        const msg = String(result?.error || "Error al registrar empresa");
 
-        toast({
-          title: "Empresa registrada",
-          description: `${formData.nombre} ha sido registrada exitosamente.`,
-        })
+        if (
+          msg.toLowerCase().includes("rut ya está registrado") ||
+          msg.toLowerCase().includes("rut ya esta registrado")
+        ) {
+          toast({
+            title: "Empresa ya existe",
+            description: "Este RUT ya está registrado. Ingresa con tu RUT y PIN.",
+            variant: "destructive",
+          });
+          router.push("/cliente/ingresar");
+          return;
+        }
 
-        if (!empresaId) throw new Error("No se recibió id desde el servidor")
-
-        router.push(`/cliente/flota?empresaId=${empresaId}`)
-        return
+        throw new Error(msg);
       }
 
-      const msg = String(result?.error || "")
-      if (msg.toLowerCase().includes("rut ya está registrado")) {
+      toast({
+        title: "Empresa registrada",
+        description: `${formData.nombre} ha sido registrada exitosamente.`,
+      });
+
+      // 2) Login automático (setea cookie petran_cliente)
+      const loginRes = await fetch("/api/cliente/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rut, pin }),
+        credentials: "include", // ✅ para que el browser guarde cookie httpOnly
+      });
+
+      const loginData = await loginRes.json().catch(() => null);
+
+      if (!loginRes.ok) {
         toast({
-          title: "Empresa ya existe",
-          description: "Este RUT ya está registrado. Ingresa con tu RUT y PIN.",
+          title: "Registrado, pero falta ingresar",
+          description: loginData?.error || "No se pudo validar el acceso. Ingresa con tu RUT y PIN.",
           variant: "destructive",
-        })
-        router.push("/cliente/ingresar")
-        return
+        });
+        router.push("/cliente/ingresar");
+        return;
       }
 
-      throw new Error(result?.error || "Error al registrar empresa")
+      // 3) Ir a flota SIN empresaId
+      router.push("/cliente/flota");
     } catch (error) {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Error al registrar empresa",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <Card className="shadow-xl">
@@ -127,12 +151,24 @@ export function EmpresaForm() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre de la Empresa *</Label>
-                <Input id="nombre" name="nombre" required value={formData.nombre} onChange={handleInputChange} />
+                <Input
+                  id="nombre"
+                  name="nombre"
+                  required
+                  value={formData.nombre}
+                  onChange={handleInputChange}
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="rut">RUT *</Label>
-                <Input id="rut" name="rut" required value={formData.rut} onChange={handleInputChange} />
+                <Input
+                  id="rut"
+                  name="rut"
+                  required
+                  value={formData.rut}
+                  onChange={handleInputChange}
+                />
               </div>
             </div>
 
@@ -160,7 +196,12 @@ export function EmpresaForm() {
 
             <div className="space-y-2">
               <Label htmlFor="direccion">Dirección</Label>
-              <Input id="direccion" name="direccion" value={formData.direccion} onChange={handleInputChange} />
+              <Input
+                id="direccion"
+                name="direccion"
+                value={formData.direccion}
+                onChange={handleInputChange}
+              />
             </div>
 
             <div className="space-y-2">
@@ -207,7 +248,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_frio"
                   checked={formData.prioridad_frio}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_frio", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_frio", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_frio" className="cursor-pointer">
                   Sistema de Frío
@@ -218,7 +261,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_carroceria"
                   checked={formData.prioridad_carroceria}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_carroceria", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_carroceria", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_carroceria" className="cursor-pointer">
                   Carrocería
@@ -229,7 +274,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_estructura"
                   checked={formData.prioridad_estructura}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_estructura", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_estructura", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_estructura" className="cursor-pointer">
                   Estructura
@@ -240,7 +287,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_camion"
                   checked={formData.prioridad_camion}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_camion", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_camion", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_camion" className="cursor-pointer">
                   Camión
@@ -251,7 +300,9 @@ export function EmpresaForm() {
                 <Checkbox
                   id="prioridad_acople"
                   checked={formData.prioridad_acople}
-                  onCheckedChange={(checked) => handleCheckboxChange("prioridad_acople", checked as boolean)}
+                  onCheckedChange={(checked) =>
+                    handleCheckboxChange("prioridad_acople", checked as boolean)
+                  }
                 />
                 <Label htmlFor="prioridad_acople" className="cursor-pointer">
                   Acople
@@ -266,5 +317,5 @@ export function EmpresaForm() {
         </form>
       </CardContent>
     </Card>
-  )
+  );
 }
