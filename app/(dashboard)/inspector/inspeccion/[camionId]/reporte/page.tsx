@@ -9,7 +9,6 @@ import {
   Share2,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
   Truck,
   Calendar,
   User,
@@ -27,8 +26,6 @@ interface InspeccionReporte {
   empresa: string;
   fecha: string;
   inspector: string;
-  notaFinal: number;
-  resultado: "APROBADA" | "OBSERVACION" | "RECHAZADA";
   detalles: {
     categoria: string;
     items: {
@@ -65,8 +62,6 @@ export default function InspeccionReportePage() {
         empresa: "Transportes ABC",
         fecha: new Date().toISOString(),
         inspector: "Juan Pérez",
-        notaFinal: 85,
-        resultado: "APROBADA",
         detalles: [
           {
             categoria: "Frenos",
@@ -112,46 +107,6 @@ export default function InspeccionReportePage() {
     );
   }
 
-  const getResultadoConfig = (resultado: string) => {
-    switch (resultado) {
-      case "APROBADA":
-        return {
-          icon: CheckCircle2,
-          color: "text-green-600",
-          bg: "bg-green-50",
-          border: "border-green-200",
-          label: "APROBADA",
-        };
-      case "OBSERVACION":
-        return {
-          icon: AlertTriangle,
-          color: "text-yellow-600",
-          bg: "bg-yellow-50",
-          border: "border-yellow-200",
-          label: "CON OBSERVACIONES",
-        };
-      case "RECHAZADA":
-        return {
-          icon: XCircle,
-          color: "text-red-600",
-          bg: "bg-red-50",
-          border: "border-red-200",
-          label: "RECHAZADA",
-        };
-      default:
-        return {
-          icon: AlertTriangle,
-          color: "text-gray-600",
-          bg: "bg-gray-50",
-          border: "border-gray-200",
-          label: "PENDIENTE",
-        };
-    }
-  };
-
-  const resultadoConfig = getResultadoConfig(reporte.resultado);
-  const ResultadoIcon = resultadoConfig.icon;
-
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
       {/* Header */}
@@ -176,64 +131,6 @@ export default function InspeccionReportePage() {
 
       {/* Content */}
       <div className="px-4 py-6 space-y-6">
-        {/* Result Card */}
-        <div
-          className={cn(
-            "rounded-2xl border-2 p-6",
-            resultadoConfig.bg,
-            resultadoConfig.border
-          )}
-        >
-          <div className="flex items-center gap-4">
-            <div
-              className={cn(
-                "w-16 h-16 rounded-2xl flex items-center justify-center",
-                reporte.resultado === "APROBADA"
-                  ? "bg-green-100"
-                  : reporte.resultado === "RECHAZADA"
-                  ? "bg-red-100"
-                  : "bg-yellow-100"
-              )}
-            >
-              <ResultadoIcon className={cn("h-8 w-8", resultadoConfig.color)} />
-            </div>
-
-            <div className="flex-1">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                Resultado
-              </p>
-              <h2 className={cn("text-2xl font-bold", resultadoConfig.color)}>
-                {resultadoConfig.label}
-              </h2>
-            </div>
-
-            <div className="text-right">
-              <p className="text-xs text-gray-500 mb-1">Nota Final</p>
-              <p
-                className={cn(
-                  "text-4xl font-bold",
-                  reporte.notaFinal >= 80
-                    ? "text-green-600"
-                    : reporte.notaFinal >= 60
-                    ? "text-yellow-600"
-                    : "text-red-600"
-                )}
-              >
-                {reporte.notaFinal}
-              </p>
-            </div>
-          </div>
-
-          {reporte.resultado !== "APROBADA" && (
-            <div className="mt-4 p-3 bg-white/50 rounded-xl">
-              <p className="text-sm text-gray-600">
-                <AlertTriangle className="h-4 w-4 inline-block mr-1 text-yellow-600" />
-                Atención: Este vehículo requiere reparaciones antes de su próximo uso.
-              </p>
-            </div>
-          )}
-        </div>
-
         {/* Vehicle Info */}
         <div className="bg-white rounded-2xl border border-gray-100 p-4">
           <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">

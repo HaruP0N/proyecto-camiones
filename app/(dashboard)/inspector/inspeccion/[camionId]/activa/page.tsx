@@ -4,6 +4,9 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/components/ui/use-toast";
+import { useInspectionDraft } from "@/hooks/use-inspection-draft";
+import { CamionValidationPhase } from "@/components/inspection/camion-validation-phase";
+import { CarroceriaValidationPhase } from "@/components/inspection/carroceria-validation-phase";
 import {
   ChevronLeft,
   ChevronUp,
@@ -80,6 +83,13 @@ export default function InspeccionPage() {
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
 
+  // Usar hook de auto-save
+  const { draft, updateDraft } = useInspectionDraft(camionId);
+
+  // Fases de validación
+  const [validacionCamion, setValidacionCamion] = useState(false);
+  const [validacionCarroceria, setValidacionCarroceria] = useState(false);
+
   // Inicializar respuestas vacías
   useEffect(() => {
     const initial: Record<string, RespuestaItemExtended> = {};
@@ -127,6 +137,69 @@ export default function InspeccionPage() {
 
     loadCamion();
   }, [camionId, toast]);
+
+  // Manejar completar validación de camión
+  const handleCamionValidationComplete = (data: any) => {
+    updateDraft({
+      ...draft,
+      camionFoto: data.foto,
+      patente: data.patente,
+      patenteValidada: data.patenteVerificada || false,
+      choferNombre: data.choferNombre,
+      choferRUT: data.choferRUT,
+      choferEdad: data.choferEdad,
+      choferApreciacion: data.choferApreciacion,
+      direccion: data.direccion,
+    });
+    setValidacionCamion(true);
+  };
+
+  // Manejar completar validación de carrocería
+  const handleCarroceriaValidationComplete = (data: any) => {
+    updateDraft({
+      ...draft,
+      carroceriaFoto: data.foto,
+      carroceriaValidada: data.tipoVerificado || false,
+    });
+    setValidacionCarroceria(true);
+  };
+
+  // Si no ha completado validaciones, mostrar fases
+  if (!validacionCamion && camion) {
+    return (
+      <CamionValidationPhase
+        patenteBD={camion.patente}
+        onComplete={handleCamionValidationComplete}
+        initialData={
+          draft?.patente
+            ? ({
+                foto: draft.camionFoto,
+                patente: draft.patente,
+                patenteVerificada: draft.patenteValidada ?? false,
+                choferNombre: draft.choferNombre,
+                choferRUT: draft.choferRUT,
+                choferEdad: draft.choferEdad,
+                choferApreciacion: draft.choferApreciacion,
+                direccion: draft.direccion,
+              } as any)
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (!validacionCarroceria && camion) {
+    // Obtener tipo de carrocería desde sessionStorage o draft
+    const tipoCarroceria = sessionStorage.getItem(
+      `carroceria_${camionId}`
+    ) || "CAMION_CON_CARRO";
+    return (
+      <CarroceriaValidationPhase
+        tipoCarroceriaBD={tipoCarroceria}
+        onComplete={handleCarroceriaValidationComplete}
+      />
+    );
+  }
 
   const currentCategory = CATEGORIAS[currentCategoryIndex];
 

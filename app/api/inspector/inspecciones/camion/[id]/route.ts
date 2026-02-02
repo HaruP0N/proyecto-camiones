@@ -40,8 +40,9 @@ export async function GET(
       c.carroceria, -- Cambiar tipo_remolque por carroceria
       e.nombre as empresa
     FROM camiones c
-    LEFT JOIN empresas e ON c.empresa_id = e.id
-    WHERE c.id = @camion_id AND c.activo = 1
+    LEFT JOIN proveedores p ON c.proveedor_id = p.id
+    LEFT JOIN empresas e ON p.empresa_id = e.id
+    WHERE c.id = @camion_id
   `);
 
     if (camionResult.recordset.length === 0) {

@@ -3,17 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Truck,
-  Search,
-  ChevronRight,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Calendar,
-  Filter,
-  Download,
-} from "lucide-react";
+import { Truck, Search, ChevronRight, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils-cn";
 
 interface InspeccionHistorial {
@@ -23,8 +13,6 @@ interface InspeccionHistorial {
   modelo: string;
   empresa: string;
   fecha: string;
-  resultado: "APROBADA" | "OBSERVACION" | "RECHAZADA";
-  nota: number;
 }
 
 export default function HistorialPage() {
@@ -33,12 +21,12 @@ export default function HistorialPage() {
   const [inspecciones, setInspecciones] = useState<InspeccionHistorial[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filteredInspecciones, setFilteredInspecciones] = useState<InspeccionHistorial[]>([]);
-  const [activeFilter, setActiveFilter] = useState<"all" | "approved" | "rejected">("all");
 
   useEffect(() => {
     // Simular carga de datos
     setTimeout(() => {
       setInspecciones([
+        {
         {
           id: 1,
           patente: "BJFP-32",
@@ -46,8 +34,6 @@ export default function HistorialPage() {
           modelo: "FH16",
           empresa: "Transportes ABC",
           fecha: "2024-01-28T10:30:00",
-          resultado: "APROBADA",
-          nota: 92,
         },
         {
           id: 2,
@@ -56,8 +42,6 @@ export default function HistorialPage() {
           modelo: "Actros",
           empresa: "Logística XYZ",
           fecha: "2024-01-27T14:15:00",
-          resultado: "OBSERVACION",
-          nota: 75,
         },
         {
           id: 3,
@@ -66,8 +50,6 @@ export default function HistorialPage() {
           modelo: "R500",
           empresa: "Transportes Norte",
           fecha: "2024-01-26T09:00:00",
-          resultado: "APROBADA",
-          nota: 88,
         },
         {
           id: 4,
@@ -76,12 +58,10 @@ export default function HistorialPage() {
           modelo: "XF",
           empresa: "Carga Sur",
           fecha: "2024-01-25T16:45:00",
-          resultado: "RECHAZADA",
-          nota: 45,
         },
       ]);
       setLoading(false);
-    }, 800);
+    }, 600);
   }, []);
 
   useEffect(() => {
@@ -97,49 +77,8 @@ export default function HistorialPage() {
       );
     }
 
-    if (activeFilter !== "all") {
-      filtered = filtered.filter((i) =>
-        activeFilter === "approved"
-          ? i.resultado === "APROBADA"
-          : i.resultado === "RECHAZADA"
-      );
-    }
-
     setFilteredInspecciones(filtered);
-  }, [searchQuery, activeFilter, inspecciones]);
-
-  const getResultadoConfig = (resultado: string) => {
-    switch (resultado) {
-      case "APROBADA":
-        return {
-          icon: CheckCircle2,
-          color: "text-green-600",
-          bg: "bg-green-50",
-          border: "border-green-200",
-        };
-      case "OBSERVACION":
-        return {
-          icon: AlertTriangle,
-          color: "text-yellow-600",
-          bg: "bg-yellow-50",
-          border: "border-yellow-200",
-        };
-      case "RECHAZADA":
-        return {
-          icon: XCircle,
-          color: "text-red-600",
-          bg: "bg-red-50",
-          border: "border-red-200",
-        };
-      default:
-        return {
-          icon: AlertTriangle,
-          color: "text-neutral-600",
-          bg: "bg-neutral-50",
-          border: "border-neutral-200",
-        };
-    }
-  };
+  }, [searchQuery, inspecciones]);
 
   if (loading) {
     return (
@@ -151,79 +90,47 @@ export default function HistorialPage() {
 
   const stats = {
     total: inspecciones.length,
-    aprobadas: inspecciones.filter((i) => i.resultado === "APROBADA").length,
-    rechazadas: inspecciones.filter((i) => i.resultado === "RECHAZADA").length,
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white pb-20">
       {/* Header */}
-      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-0 z-40">
+      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-16 z-40">
         <div className="px-4 py-4">
-          <div className="flex items-center justify-between mb-1">
-            <h1 className="text-xl font-bold text-white">Historial</h1>
-            <button className="p-2 hover:bg-neutral-800 rounded-lg transition-colors">
-              <Download className="h-5 w-5 text-neutral-400" />
-            </button>
-          </div>
-          <p className="text-sm text-neutral-400">Inspecciones realizadas</p>
+          <h1 className="text-xl font-bold text-white mb-1">Historial</h1>
+          <p className="text-sm text-neutral-400">
+            Inspecciones realizadas
+          </p>
         </div>
       </header>
 
       {/* Content */}
-      <div className="px-4 py-6">
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <div className="bg-white rounded-xl p-4 border border-neutral-200">
-            <p className="text-2xl font-bold text-neutral-900">{stats.total}</p>
-            <p className="text-xs text-neutral-500">Total</p>
-          </div>
-          <div className="bg-green-50 rounded-xl p-4 border border-green-200">
-            <p className="text-2xl font-bold text-green-600">{stats.aprobadas}</p>
-            <p className="text-xs text-green-600">Aprobadas</p>
-          </div>
-          <div className="bg-red-50 rounded-xl p-4 border border-red-200">
-            <p className="text-2xl font-bold text-red-600">{stats.rechazadas}</p>
-            <p className="text-xs text-red-600">Rechazadas</p>
+      <div className="px-4 py-6 space-y-4">
+        {/* Total Stats */}
+        <div className="bg-gradient-to-br from-neutral-900 to-neutral-800 rounded-2xl p-6 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm text-neutral-400 mb-1">Total de inspecciones</p>
+              <p className="text-4xl font-bold">{stats.total}</p>
+            </div>
+            <Truck className="h-12 w-12 text-neutral-400 opacity-50" />
           </div>
         </div>
 
         {/* Search */}
-        <div className="relative mb-4">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-neutral-400" />
           <input
             type="text"
-            placeholder="Buscar por patente, marca o empresa..."
+            placeholder="Buscar patente, marca o empresa..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-3 bg-neutral-100 border border-neutral-200 rounded-xl text-sm text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-red-500"
           />
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-          {[
-            { key: "all", label: "Todos" },
-            { key: "approved", label: "Aprobadas" },
-            { key: "rejected", label: "Rechazadas" },
-          ].map((filter) => (
-            <button
-              key={filter.key}
-              onClick={() => setActiveFilter(filter.key as any)}
-              className={cn(
-                "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
-                activeFilter === filter.key
-                  ? "bg-red-600 text-white"
-                  : "bg-white border border-neutral-300 text-neutral-700 hover:border-neutral-400"
-              )}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
-
         {/* List */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           {filteredInspecciones.length === 0 ? (
             <div className="bg-neutral-50 rounded-2xl p-8 text-center border border-neutral-200">
               <Calendar className="h-12 w-12 text-neutral-300 mx-auto mb-4" />
@@ -235,61 +142,37 @@ export default function HistorialPage() {
               </p>
             </div>
           ) : (
-            filteredInspecciones.map((insp) => {
-              const config = getResultadoConfig(insp.resultado);
-              const Icon = config.icon;
-
-              return (
-                <div
-                  key={insp.id}
-                  onClick={() =>
-                    router.push(`/inspector/inspeccion/${insp.id}/reporte`)
-                  }
-                  className="bg-white rounded-2xl p-4 border border-neutral-200 hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0",
-                        config.bg
-                      )}
-                    >
-                      <Icon className={cn("h-6 w-6", config.color)} />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-neutral-900">
-                          {insp.patente}
-                        </h3>
-                        <span
-                          className={cn(
-                            "text-xs font-medium px-2 py-0.5 rounded-full",
-                            config.bg,
-                            config.color
-                          )}
-                        >
-                          {insp.nota}/100
-                        </span>
-                      </div>
-                      <p className="text-sm text-neutral-600 truncate">
-                        {insp.marca} {insp.modelo}
-                      </p>
-                      <p className="text-xs text-neutral-400 flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(insp.fecha).toLocaleDateString("es-CL", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
+            filteredInspecciones.map((insp) =>
+              <div
+                key={insp.id}
+                onClick={() =>
+                  router.push(`/inspector/inspeccion/${insp.id}/reporte`)
+                }
+                className="bg-white rounded-xl p-4 border border-neutral-200 hover:border-red-300 hover:shadow-md transition-all cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="font-bold text-neutral-900">
+                        {insp.patente}
                       </p>
                     </div>
-
-                    <ChevronRight className="h-5 w-5 text-neutral-400" />
+                    <p className="text-sm text-neutral-600">
+                      {insp.marca} {insp.modelo}
+                    </p>
+                    <p className="text-xs text-neutral-400 mt-1 flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(insp.fecha).toLocaleDateString("es-CL", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </p>
                   </div>
+                  <ChevronRight className="h-5 w-5 text-neutral-400" />
                 </div>
-              );
-            })
+              </div>
+            )
           )}
         </div>
       </div>
