@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import AdminShell from "./_components/AdminShell";
 
 type Kpis = {
@@ -10,6 +9,27 @@ type Kpis = {
   inspeccionesHoyProgramadas: number;
   inspeccionesSemanaProgramadas: number;
   inspeccionesVencidas: number;
+};
+
+type DashboardStats = {
+  resultados: {
+    aprobado: number;
+    observado: number;
+    rechazado: number;
+  };
+  cumplimiento: {
+    realizadas: number;
+    vencidas: number;
+    total: number;
+  };
+  categorias: Array<{
+    categoria: string;
+    cantidad: number;
+  }>;
+  topEmpresas: Array<{
+    nombre: string;
+    total: number;
+  }>;
 };
 
 function pad(n: number) {
@@ -48,13 +68,6 @@ function endOfWeekSunday(d: Date) {
   return endOfDay(x);
 }
 
-const card: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  padding: 12,
-  background: "white",
-};
-
 function isKpisShape(x: any): x is Kpis {
   return (
     x &&
@@ -69,7 +82,9 @@ function isKpisShape(x: any): x is Kpis {
 
 export default function AdminHomePage() {
   const [kpis, setKpis] = useState<Kpis | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [err, setErr] = useState<string>("");
+  const [loading, setLoading] = useState(false);
 
   const qs = useMemo(() => {
     const now = new Date();
@@ -95,21 +110,11 @@ export default function AdminHomePage() {
         const r = await fetch(`/api/admin/kpis?${qs}`, { cache: "no-store" });
         const j = await r.json().catch(() => null);
 
-        // 1) errores HTTP
         if (!r.ok) throw new Error(j?.error || "Error al cargar KPIs");
-
-        // 2) errores con envelope ok:false aunque venga 200
         if (j?.ok === false) throw new Error(j?.error || "Error al cargar KPIs");
 
-        // 3) soporta:
-        // - antiguo: {camionesTotal,...}
-        // - nuevo: {ok:true, data:{...}}
-        const payload =
-          j && typeof j === "object" && "data" in j ? (j as any).data : j;
-
-        if (!isKpisShape(payload)) {
-          throw new Error("Respuesta de KPIs inválida");
-        }
+        const payload = j && typeof j === "object" && "data" in j ? (j as any).data : j;
+        if (!isKpisShape(payload)) throw new Error("Respuesta de KPIs inválida");
 
         setKpis(payload);
       } catch (e: any) {
@@ -119,114 +124,608 @@ export default function AdminHomePage() {
     })();
   }, [qs]);
 
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const r = await fetch("/api/admin/dashboard-stats", { cache: "no-store" });
+        const j = await r.json();
+
+        if (!r.ok || !j?.ok) throw new Error(j?.error || "Error al cargar estadísticas");
+
+        setStats({
+          resultados: j.resultados || { aprobado: 0, observado: 0, rechazado: 0 },
+          cumplimiento: j.cumplimiento || { realizadas: 0, vencidas: 0, total: 0 },
+          categorias: j.categorias || [],
+          topEmpresas: j.topEmpresas || [],
+        });
+      } catch (e: any) {
+        console.error("Error cargando stats:", e);
+        setStats(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   return (
-    <AdminShell title="Inicio" subtitle="Resumen rápido + accesos">
+    <AdminShell title="Panel de Control">
       {err ? (
         <div
           style={{
-            ...card,
-            borderColor: "#fecaca",
-            background: "#fff1f2",
-            color: "#991b1b",
-            fontWeight: 800,
-            marginBottom: 12,
+            background: "#FEE",
+            border: "2px solid #DC2626",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+            color: "#DC2626",
+            fontWeight: 700,
+            fontSize: 14,
           }}
         >
-          {err}
+          ⚠️ {err}
         </div>
       ) : null}
 
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(160px, 1fr))",
-          gap: 10,
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          gap: 16,
+          marginBottom: 32,
         }}
       >
-        <div style={card}>
-          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
-            Camiones
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            {kpis?.camionesTotal ?? "—"}
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
-            Empresas
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            {kpis?.empresasTotal ?? "—"}
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
-            Programadas hoy
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            {kpis?.inspeccionesHoyProgramadas ?? "—"}
-          </div>
-        </div>
-
-        <div style={card}>
-          <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 800 }}>
-            Programadas semana
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 900 }}>
-            {kpis?.inspeccionesSemanaProgramadas ?? "—"}
-          </div>
-        </div>
-
-        <div style={{ ...card, borderColor: "#fed7aa" }}>
-          <div style={{ fontSize: 12, color: "#9a3412", fontWeight: 900 }}>
-            Vencidas
-          </div>
-          <div style={{ fontSize: 26, fontWeight: 900, color: "#9a3412" }}>
-            {kpis?.inspeccionesVencidas ?? "—"}
-          </div>
-        </div>
+        <StatCard
+          title="Total de Camiones Registrados"
+          value={kpis?.camionesTotal ?? 0}
+          loading={!kpis}
+          icon={<TruckIcon />}
+        />
+        <StatCard
+          title="Total de Empresas Activas"
+          value={kpis?.empresasTotal ?? 0}
+          loading={!kpis}
+          icon={<BuildingIcon />}
+        />
+        <StatCard
+          title="Inspecciones Programadas Hoy"
+          value={kpis?.inspeccionesHoyProgramadas ?? 0}
+          loading={!kpis}
+          icon={<CalendarIcon />}
+        />
+        <StatCard
+          title="Inspecciones Programadas Esta Semana"
+          value={kpis?.inspeccionesSemanaProgramadas ?? 0}
+          loading={!kpis}
+          icon={<ChartIcon />}
+        />
+        <StatCard
+          title="Inspecciones Vencidas"
+          value={kpis?.inspeccionesVencidas ?? 0}
+          loading={!kpis}
+          variant="alert"
+          icon={<AlertIcon />}
+        />
       </div>
 
       <div
         style={{
-          marginTop: 14,
-          display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(240px, 1fr))",
-          gap: 10,
+          marginBottom: 24,
+          paddingBottom: 16,
+          borderBottom: "2px solid #E5E7EB",
         }}
       >
-        <Link
-          href="/admin/inspectores"
-          style={{ ...card, textDecoration: "none", color: "#111827" }}
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: "#111827",
+            marginBottom: 6,
+          }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 4 }}>Inspectores</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            Crear/editar/activar/reset password
-          </div>
-        </Link>
+          Análisis de Rendimiento
+        </h2>
+        <p
+          style={{
+            fontSize: 14,
+            color: "#6B7280",
+            margin: 0,
+          }}
+        >
+          Métricas de desempeño y calidad de inspecciones
+        </p>
+      </div>
 
-        <Link
-          href="/admin/empresas"
-          style={{ ...card, textDecoration: "none", color: "#111827" }}
-        >
-          <div style={{ fontWeight: 900, marginBottom: 4 }}>Empresas</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            Editar datos + reset PIN
-          </div>
-        </Link>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 20,
+          marginBottom: 20,
+        }}
+      >
+        <ChartCard title="Resultados de Inspecciones (últimos 30 días)">
+          {loading || !stats ? (
+            <LoadingSpinner />
+          ) : (
+            <ResultadosChart resultados={stats.resultados} />
+          )}
+        </ChartCard>
 
-        <Link
-          href="/admin/camiones"
-          style={{ ...card, textDecoration: "none", color: "#111827" }}
+        <ChartCard title="Tasa de Cumplimiento (este mes)">
+          {loading || !stats ? (
+            <LoadingSpinner />
+          ) : (
+            <CumplimientoChart cumplimiento={stats.cumplimiento} />
+          )}
+        </ChartCard>
+      </div>
+
+      <div
+        style={{
+          marginBottom: 24,
+          marginTop: 32,
+          paddingBottom: 16,
+          borderBottom: "2px solid #E5E7EB",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: 20,
+            fontWeight: 700,
+            color: "#111827",
+            marginBottom: 6,
+          }}
         >
-          <div style={{ fontWeight: 900, marginBottom: 4 }}>Agenda (actual)</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>
-            Tu panel existente sin cambios
-          </div>
-        </Link>
+          Distribución y Ranking
+        </h2>
+        <p
+          style={{
+            fontSize: 14,
+            color: "#6B7280",
+            margin: 0,
+          }}
+        >
+          Análisis por categoría y principales clientes
+        </p>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 20,
+        }}
+      >
+        <ChartCard title="Inspecciones por Categoría">
+          {loading || !stats ? (
+            <LoadingSpinner />
+          ) : (
+            <CategoriasChart categorias={stats.categorias} />
+          )}
+        </ChartCard>
+
+        <ChartCard title="Top 5 Empresas con Más Inspecciones">
+          {loading || !stats ? (
+            <LoadingSpinner />
+          ) : (
+            <TopEmpresasChart empresas={stats.topEmpresas} />
+          )}
+        </ChartCard>
       </div>
     </AdminShell>
+  );
+}
+
+function TruckIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="1" y="3" width="15" height="13" rx="2" />
+      <path d="M16 8h3l3 3v5h-2" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  );
+}
+
+function BuildingIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
+    </svg>
+  );
+}
+
+function CalendarIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function ChartIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+    </svg>
+  );
+}
+
+function AlertIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
+}
+
+function StatCard({
+  title,
+  value,
+  loading,
+  variant = "default",
+  icon,
+}: {
+  title: string;
+  value: number;
+  loading: boolean;
+  variant?: "default" | "alert";
+  icon: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        background: variant === "alert" ? "#FEE2E2" : "white",
+        border: `2px solid ${variant === "alert" ? "#DC2626" : "#E5E7EB"}`,
+        borderRadius: 12,
+        padding: 20,
+        minHeight: 140,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          marginBottom: 12,
+          color: variant === "alert" ? "#DC2626" : "#6B7280",
+        }}
+      >
+        {icon}
+      </div>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: "#6B7280",
+          marginBottom: 8,
+          lineHeight: 1.3,
+        }}
+      >
+        {title}
+      </div>
+      <div
+        style={{
+          fontSize: 42,
+          fontWeight: 900,
+          color: variant === "alert" ? "#DC2626" : "#111827",
+          letterSpacing: -1,
+        }}
+      >
+        {loading ? "..." : value}
+      </div>
+    </div>
+  );
+}
+
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: "white",
+        border: "1px solid #E5E7EB",
+        borderRadius: 12,
+        padding: 24,
+        minHeight: 350,
+      }}
+    >
+      <h3
+        style={{
+          fontSize: 15,
+          fontWeight: 700,
+          color: "#111827",
+          marginBottom: 20,
+          textAlign: "center",
+          letterSpacing: 0.3,
+        }}
+      >
+        {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function LoadingSpinner() {
+  return (
+    <div
+      style={{
+        height: 280,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          border: "4px solid #E5E7EB",
+          borderTop: "4px solid #DC2626",
+          borderRadius: "50%",
+          animation: "spin 1s linear infinite",
+        }}
+      />
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+function ResultadosChart({
+  resultados,
+}: {
+  resultados: { aprobado: number; observado: number; rechazado: number };
+}) {
+  const total = resultados.aprobado + resultados.observado + resultados.rechazado;
+
+  if (total === 0) {
+    return (
+      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+        Sin datos disponibles
+      </div>
+    );
+  }
+
+  const data = [
+    { label: "Aprobadas", value: resultados.aprobado, color: "#10B981" },
+    { label: "Observadas", value: resultados.observado, color: "#F59E0B" },
+    { label: "Rechazadas", value: resultados.rechazado, color: "#DC2626" },
+  ];
+
+  const max = Math.max(...data.map((d) => d.value), 1);
+
+  return (
+    <div style={{ height: 280, display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 20, padding: "0 20px" }}>
+        {data.map((d, idx) => {
+          const heightPercent = (d.value / max) * 100;
+          return (
+            <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: `${Math.max(heightPercent, 5)}%`,
+                  background: d.color,
+                  borderRadius: "8px 8px 0 0",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white",
+                  fontWeight: 900,
+                  fontSize: 24,
+                  minHeight: 60,
+                }}
+              >
+                {d.value}
+              </div>
+              <div style={{ marginTop: 12, fontSize: 13, fontWeight: 700, color: "#374151", textAlign: "center" }}>
+                {d.label}
+              </div>
+              <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+                {((d.value / total) * 100).toFixed(1)}%
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CumplimientoChart({
+  cumplimiento,
+}: {
+  cumplimiento: { realizadas: number; vencidas: number; total: number };
+}) {
+  if (cumplimiento.total === 0) {
+    return (
+      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+        Sin datos disponibles
+      </div>
+    );
+  }
+
+  const tasaCumplimiento = (cumplimiento.realizadas / cumplimiento.total) * 100;
+  const radius = 70;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference - (tasaCumplimiento / 100) * circumference;
+
+  return (
+    <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 40 }}>
+      <svg width="180" height="180">
+        <circle cx="90" cy="90" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="20" />
+        <circle
+          cx="90"
+          cy="90"
+          r={radius}
+          fill="none"
+          stroke={tasaCumplimiento >= 80 ? "#10B981" : tasaCumplimiento >= 50 ? "#F59E0B" : "#DC2626"}
+          strokeWidth="20"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          transform="rotate(-90 90 90)"
+        />
+        <text x="90" y="85" textAnchor="middle" fontSize="36" fontWeight="900" fill="#111827">
+          {tasaCumplimiento.toFixed(0)}%
+        </text>
+        <text x="90" y="105" textAnchor="middle" fontSize="12" fontWeight="600" fill="#6B7280">
+          Cumplimiento
+        </text>
+      </svg>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Realizadas</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "#10B981" }}>{cumplimiento.realizadas}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Vencidas</div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "#DC2626" }}>{cumplimiento.vencidas}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Total</div>
+          <div style={{ fontSize: 24, fontWeight: 900, color: "#111827" }}>{cumplimiento.total}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CategoriasChart({
+  categorias,
+}: {
+  categorias: Array<{ categoria: string; cantidad: number }>;
+}) {
+  if (categorias.length === 0) {
+    return (
+      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+        Sin datos disponibles
+      </div>
+    );
+  }
+
+  const colors = ["#DC2626", "#1F2937", "#F59E0B", "#10B981", "#3B82F6"];
+
+  return (
+    <div style={{ height: 280, display: "flex", flexDirection: "column", gap: 12, padding: "10px 0" }}>
+      {categorias.map((cat, idx) => {
+        const max = Math.max(...categorias.map((c) => c.cantidad));
+        const widthPercent = (cat.cantidad / max) * 100;
+
+        return (
+          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 90, fontSize: 13, fontWeight: 700, color: "#374151", textTransform: "capitalize" }}>
+              {cat.categoria}
+            </div>
+            <div style={{ flex: 1, position: "relative" }}>
+              <div
+                style={{
+                  width: `${widthPercent}%`,
+                  height: 36,
+                  background: colors[idx % colors.length],
+                  borderRadius: 6,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  paddingRight: 12,
+                  color: "white",
+                  fontWeight: 900,
+                  fontSize: 16,
+                  minWidth: 50,
+                }}
+              >
+                {cat.cantidad}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TopEmpresasChart({
+  empresas,
+}: {
+  empresas: Array<{ nombre: string; total: number }>;
+}) {
+  if (empresas.length === 0) {
+    return (
+      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+        Sin datos disponibles
+      </div>
+    );
+  }
+
+  const max = Math.max(...empresas.map((e) => e.total));
+
+  return (
+    <div style={{ height: 280, display: "flex", flexDirection: "column", gap: 12, padding: "10px 0" }}>
+      {empresas.map((emp, idx) => {
+        const widthPercent = (emp.total / max) * 100;
+
+        return (
+          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: "#DC2626",
+                color: "white",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: 14,
+                flexShrink: 0,
+              }}
+            >
+              {idx + 1}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 4 }}>
+                {emp.nombre}
+              </div>
+              <div style={{ position: "relative" }}>
+                <div
+                  style={{
+                    width: `${widthPercent}%`,
+                    height: 24,
+                    background: `linear-gradient(90deg, #DC2626 0%, #B91C1C ${widthPercent}%)`,
+                    borderRadius: 4,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    paddingRight: 8,
+                    color: "white",
+                    fontWeight: 900,
+                    fontSize: 12,
+                    minWidth: 40,
+                  }}
+                >
+                  {emp.total}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
