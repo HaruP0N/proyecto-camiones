@@ -76,6 +76,48 @@ export const ITEMS: ItemChecklist[] = [
   { id: "N4-42", nivel: 4, grupo: "NIVEL 4 — BAJO", seccion: "Estético / Confort", titulo: "Ruidos interiores" },
   { id: "N4-43", nivel: 4, grupo: "NIVEL 4 — BAJO", seccion: "Estético / Confort", titulo: "Tapices y paneles" },
   { id: "N4-44", nivel: 4, grupo: "NIVEL 4 — BAJO", seccion: "Estético / Confort", titulo: "Detalles plásticos" },
+
+  // ============ CATEGORÍAS ESPECÍFICAS DE CARROCERÍA ============
+  // Carrocería General (Camión con carro, Paquetero, etc)
+  { id: "CARR-01", nivel: 2, grupo: "CARROCERÍA", seccion: "Carrocería general", titulo: "Estructura sin óxido" },
+  { id: "CARR-02", nivel: 2, grupo: "CARROCERÍA", seccion: "Carrocería general", titulo: "Paneles sin deformaciones" },
+  { id: "CARR-03", nivel: 2, grupo: "CARROCERÍA", seccion: "Carrocería general", titulo: "Juntas herméticas" },
+
+  // Puertas Laterales
+  { id: "CARR-04", nivel: 2, grupo: "CARROCERÍA", seccion: "Puertas laterales", titulo: "Puertas abren/cierran correctamente" },
+  { id: "CARR-05", nivel: 2, grupo: "CARROCERÍA", seccion: "Puertas laterales", titulo: "Bisagras sin desgaste" },
+  { id: "CARR-06", nivel: 2, grupo: "CARROCERÍA", seccion: "Puertas laterales", titulo: "Sellos en buen estado" },
+
+  // Puerta Trasera
+  { id: "CARR-07", nivel: 1, grupo: "CARROCERÍA", seccion: "Puerta trasera", titulo: "Puerta cierra correctamente" },
+  { id: "CARR-08", nivel: 2, grupo: "CARROCERÍA", seccion: "Puerta trasera", titulo: "Bisagras sin juego" },
+  { id: "CARR-09", nivel: 2, grupo: "CARROCERÍA", seccion: "Puerta trasera", titulo: "Sellos en buen estado" },
+
+  // Sistema de Frío (Reefer)
+  { id: "REEFER-01", nivel: 1, grupo: "REFRIGERACIÓN", seccion: "Sistema de frío", titulo: "Compresor funcionando" },
+  { id: "REEFER-02", nivel: 1, grupo: "REFRIGERACIÓN", seccion: "Sistema de frío", titulo: "Temperatura controlada" },
+  { id: "REEFER-03", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Sistema de frío", titulo: "Sin fugas de refrigerante" },
+  { id: "REEFER-04", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Sistema de frío", titulo: "Válvulas operacionales" },
+
+  // Aislamiento (Reefer / Cámara de frío)
+  { id: "AISLE-01", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Aislamiento", titulo: "Paredes sin grietas" },
+  { id: "AISLE-02", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Aislamiento", titulo: "Piso en buen estado" },
+  { id: "AISLE-03", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Aislamiento", titulo: "Techo sin humedad" },
+
+  // Temperatura
+  { id: "TEMP-01", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Temperatura", titulo: "Controles funcionan" },
+  { id: "TEMP-02", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Temperatura", titulo: "Indicadores legibles" },
+  { id: "TEMP-03", nivel: 2, grupo: "REFRIGERACIÓN", seccion: "Temperatura", titulo: "Alarmas operacionales" },
+
+  // Estanterías (Paquetero)
+  { id: "ESTAN-01", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Estanterías", titulo: "Estanterías bien fijadas" },
+  { id: "ESTAN-02", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Estanterías", titulo: "Sin herrumbre" },
+  { id: "ESTAN-03", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Estanterías", titulo: "Divisiones íntegras" },
+
+  // Carga (Paquetero)
+  { id: "CARGA-01", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Carga", titulo: "Sistema de amarre funcional" },
+  { id: "CARGA-02", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Carga", titulo: "Piso sin daño" },
+  { id: "CARGA-03", nivel: 2, grupo: "COMPARTIMIENTOS", seccion: "Carga", titulo: "Laterales protegidos" },
 ];
 
 // Para render ordenado: grupos -> secciones -> ítems

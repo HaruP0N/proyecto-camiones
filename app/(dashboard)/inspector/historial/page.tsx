@@ -27,7 +27,6 @@ export default function HistorialPage() {
     setTimeout(() => {
       setInspecciones([
         {
-        {
           id: 1,
           patente: "BJFP-32",
           marca: "Volvo",

@@ -151,8 +151,8 @@ export default function AjustesPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-0 z-40">
+      {/* Header Corregido para top-16 */}
+      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-16 z-40">
         <div className="px-4 py-4">
           <h1 className="text-xl font-bold text-white">Ajustes</h1>
         </div>

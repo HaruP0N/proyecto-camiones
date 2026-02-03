@@ -1,9 +1,4 @@
 "use client";
 
-export function FleetForm() {
-  return (
-    <div className="p-4">
-      <p>Fleet Form Component</p>
-    </div>
-  );
-}
+// Re-export the actual FleetForm from the modules folder
+export { FleetForm } from "@/components/modules/camiones/fleet-form";

@@ -44,7 +44,8 @@ export default function InspectorLayout({ children }: InspectorLayoutProps) {
   return (
     <div className="min-h-screen bg-white pb-20">
       {/* Top Header con Perfil Dropdown */}
-      <header className="fixed top-0 left-0 right-0 bg-neutral-900 border-b border-neutral-800 z-40">
+      {/* CORRECCIÓN: z-50 para asegurar que siempre esté encima de los sub-headers */}
+      <header className="fixed top-0 left-0 right-0 bg-neutral-900 border-b border-neutral-800 z-50">
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Truck className="h-6 w-6 text-red-600" />

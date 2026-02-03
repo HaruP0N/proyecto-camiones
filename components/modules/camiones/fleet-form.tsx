@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import Link from "next/link";
+import { Truck, Plus, X, Camera, LogOut, ArrowLeft, RefreshCw, Edit2, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type Carroceria = "CAMION_CON_CARRO" | "CARRO_REEFER" | "CAMARA_DE_FRIO" | "CAMION_PAQUETERO";
+type Carroceria = "camion_con_carro" | "carro_reefer" | "camara_de_frio" | "camion_paquetero";
 
 type ExistingTruck = {
   id: number;
@@ -16,76 +15,46 @@ type ExistingTruck = {
   marca: string | null;
   modelo: string | null;
   anio: number | null;
-  carroceria: Carroceria | null;
+  carroceria: string | null;
   foto_url?: string | null;
 };
 
-// Estado de edición tipado para inputs (strings)
-type EditPatch = {
-  marca?: string;
-  modelo?: string;
-  anio?: string;
-  carroceria?: Carroceria;
-};
-
-type TruckRow = {
-  patente: string;
-  carroceria: Carroceria;
-  marca: string;
-  modelo: string;
-  anio: string;
-};
-
-type PhotoState = { file: File; previewUrl: string };
-
 const CARROCERIAS: { value: Carroceria; label: string }[] = [
-  { value: "CAMION_CON_CARRO", label: "Camión con carro" },
-  { value: "CARRO_REEFER", label: "Carro reefer" },
-  { value: "CAMARA_DE_FRIO", label: "Cámara de frío" },
-  { value: "CAMION_PAQUETERO", label: "Camión paquetero" },
+  { value: "camion_con_carro", label: "Camión con carro" },
+  { value: "carro_reefer", label: "Carro reefer" },
+  { value: "camara_de_frio", label: "Cámara de frío" },
+  { value: "camion_paquetero", label: "Camión paquetero" },
 ];
 
 function normalizePatente(x: string) {
   return String(x || "").replace(/\s+/g, "").toUpperCase();
 }
 
-function parseYearOrNull(s: string): number | null {
-  const t = String(s ?? "").trim();
-  if (!t) return null;
-  const n = Number(t);
-  if (!Number.isInteger(n) || n < 1900 || n > 2100) return null;
-  return n;
-}
-
 export function FleetForm() {
   const router = useRouter();
   const { toast } = useToast();
 
-  // ✅ empresaId ahora viene desde cookie (via /api/cliente/me)
   const [empresaId, setEmpresaId] = useState<number | null>(null);
   const [loadingEmpresa, setLoadingEmpresa] = useState(true);
 
-  // -------- existentes --------
   const [existing, setExisting] = useState<ExistingTruck[]>([]);
   const [loadingExisting, setLoadingExisting] = useState(false);
 
-  const [editById, setEditById] = useState<Record<number, EditPatch>>({});
+  // Para editar camión existente
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editForm, setEditForm] = useState({ marca: "", modelo: "", anio: "", carroceria: "" });
 
-  // fotos seleccionadas para existentes (key=truckId)
-  const [photoExisting, setPhotoExisting] = useState<Record<number, PhotoState | undefined>>({});
-  const fileRefsExisting = useRef<Record<number, HTMLInputElement | null>>({});
-
-  // -------- nuevos --------
-  const [defaultCarroceria, setDefaultCarroceria] = useState<Carroceria>("CAMION_CON_CARRO");
-  const [paste, setPaste] = useState("");
-  const [rows, setRows] = useState<TruckRow[]>([]);
+  // Para agregar nuevo camión (uno a la vez)
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newTruck, setNewTruck] = useState({
+    patente: "",
+    carroceria: "camion_con_carro" as Carroceria,
+    marca: "",
+    modelo: "",
+    anio: "",
+  });
   const [saving, setSaving] = useState(false);
 
-  // fotos para nuevos (key = patente normalizada)
-  const [photoNewByPatente, setPhotoNewByPatente] = useState<Record<string, PhotoState | undefined>>({});
-  const fileRefsNew = useRef<Record<string, HTMLInputElement | null>>({});
-
-  // ✅ 1) Cargar empresaId desde cookie
   useEffect(() => {
     (async () => {
       try {
@@ -104,7 +73,6 @@ export function FleetForm() {
           description: e instanceof Error ? e.message : "No autenticado",
           variant: "destructive",
         });
-        // Te mando a ingresar (ya no pedimos empresaId)
         router.push("/cliente/ingresar");
       } finally {
         setLoadingEmpresa(false);
@@ -130,207 +98,51 @@ export function FleetForm() {
     }
   };
 
-  // ✅ 2) Cuando ya tengo empresaId, cargo camiones
   useEffect(() => {
     if (!empresaId) return;
     loadExisting(empresaId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
 
-  const duplicatesInForm = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of rows) {
-      const p = normalizePatente(r.patente);
-      if (!p) continue;
-      counts.set(p, (counts.get(p) ?? 0) + 1);
-    }
-    return new Set(Array.from(counts.entries()).filter(([, c]) => c > 1).map(([p]) => p));
-  }, [rows]);
-
-  const handleGenerateRows = () => {
-    const patentes = paste
-      .split(/\r?\n/)
-      .map((x) => normalizePatente(x))
-      .filter(Boolean);
-
-    if (patentes.length === 0) {
-      toast({ title: "Sin patentes", description: "Pega al menos una patente.", variant: "destructive" });
+  // Agregar un camión nuevo
+  const handleAddTruck = async () => {
+    const patente = normalizePatente(newTruck.patente);
+    if (!patente) {
+      toast({ title: "Error", description: "Ingresa la patente", variant: "destructive" });
       return;
     }
 
-    const existingInDB = new Set(existing.map((t) => normalizePatente(t.patente)));
-    const existingInForm = new Set(rows.map((r) => normalizePatente(r.patente)));
-
-    const toAdd = patentes.filter((p) => !existingInForm.has(p));
-    const alreadyDB = toAdd.filter((p) => existingInDB.has(p));
-    const reallyNew = toAdd.filter((p) => !existingInDB.has(p));
-
-    if (alreadyDB.length > 0) {
-      toast({
-        title: "Patentes ya registradas",
-        description: `Se omiten: ${alreadyDB.join(", ")}`,
-        variant: "destructive",
-      });
-    }
-
-    if (reallyNew.length === 0) {
-      setPaste("");
-      return;
-    }
-
-    setRows((prev) => [
-      ...prev,
-      ...reallyNew.map((p) => ({
-        patente: p,
-        carroceria: defaultCarroceria,
-        marca: "",
-        modelo: "",
-        anio: "",
-      })),
-    ]);
-
-    setPaste("");
-  };
-
-  const updateRow = (idx: number, patch: Partial<TruckRow>) => {
-    setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-  };
-
-  const removeRow = (idx: number) => {
-    const patente = normalizePatente(rows[idx]?.patente || "");
-    const prev = photoNewByPatente[patente];
-    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-
-    setPhotoNewByPatente((p) => {
-      const copy = { ...p };
-      delete copy[patente];
-      return copy;
-    });
-
-    setRows((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // --- foto helpers ---
-  const pickPhotoNew = (patente: string, file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Archivo inválido", description: "Debe ser una imagen.", variant: "destructive" });
-      return;
-    }
-    const key = normalizePatente(patente);
-    const previewUrl = URL.createObjectURL(file);
-
-    const prev = photoNewByPatente[key];
-    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-
-    setPhotoNewByPatente((p) => ({ ...p, [key]: { file, previewUrl } }));
-  };
-
-  const openPickerNew = (patente: string) => {
-    const key = normalizePatente(patente);
-    const input = fileRefsNew.current[key];
-    if (!input) return;
-    input.click();
-  };
-
-  const pickPhotoExisting = (truckId: number, file: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "Archivo inválido", description: "Debe ser una imagen.", variant: "destructive" });
-      return;
-    }
-    const previewUrl = URL.createObjectURL(file);
-
-    const prev = photoExisting[truckId];
-    if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-
-    setPhotoExisting((p) => ({ ...p, [truckId]: { file, previewUrl } }));
-  };
-
-  const openPickerExisting = (truckId: number) => {
-    const input = fileRefsExisting.current[truckId];
-    if (!input) return;
-    input.click();
-  };
-
-  // --- validar ---
-  const validate = () => {
-    if (!empresaId) return "No se pudo identificar la empresa (sesión).";
-    if (rows.length === 0) return "Debes agregar al menos un camión.";
-
-    for (const r of rows) {
-      if (!normalizePatente(r.patente)) return "Hay una patente vacía.";
-      if (r.anio && parseYearOrNull(r.anio) === null) return `Año inválido en patente ${r.patente}`;
-    }
-
-    if (duplicatesInForm.size > 0) return `Patentes duplicadas: ${Array.from(duplicatesInForm).join(", ")}`;
-    return null;
-  };
-
-  // --- guardar nuevos camiones + fotos placeholder ---
-  const handleSaveNew = async () => {
-    const err = validate();
-    if (err) {
-      toast({ title: "Error", description: err, variant: "destructive" });
+    // Verificar si ya existe
+    if (existing.some(t => normalizePatente(t.patente) === patente)) {
+      toast({ title: "Error", description: "Esta patente ya está registrada", variant: "destructive" });
       return;
     }
 
     setSaving(true);
     try {
-      const payload = {
-        empresaId: Number(empresaId),
-        camiones: rows.map((r) => ({
-          patente: normalizePatente(r.patente),
-          carroceria: r.carroceria,
-          marca: r.marca.trim() || null,
-          modelo: r.modelo.trim() || null,
-          anio: r.anio ? Number(r.anio) : null,
-          tipo: "camion",
-        })),
-      };
-
       const res = await fetch("/api/fleet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          empresaId,
+          camiones: [{
+            patente,
+            carroceria: newTruck.carroceria,
+            marca: newTruck.marca.trim() || null,
+            modelo: newTruck.modelo.trim() || null,
+            anio: newTruck.anio ? Number(newTruck.anio) : null,
+            tipo: "camion",
+          }],
+        }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Error al guardar flota");
+      if (!res.ok) throw new Error(data?.error || "Error al guardar");
 
-      const insertedTrucks: Array<{ id: number; patente: string }> = data?.insertedTrucks ?? [];
-      const duplicates: string[] = data?.duplicates ?? [];
+      toast({ title: "Camión agregado", description: `Patente ${patente} registrada exitosamente` });
 
-      for (const it of insertedTrucks) {
-        const key = normalizePatente(it.patente);
-        const photo = photoNewByPatente[key];
-        if (!photo) continue;
-
-        const fakeUrl = `pending-upload://${key}`;
-
-        const r2 = await fetch("/api/truck-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ camionId: it.id, url: fakeUrl }),
-        });
-        const d2 = await r2.json();
-        if (!r2.ok) throw new Error(d2?.error || `Error guardando foto de ${key}`);
-      }
-
-      toast({
-        title: "Flota actualizada",
-        description: duplicates.length
-          ? `Insertados: ${insertedTrucks.length}. Duplicados omitidos: ${duplicates.join(", ")}`
-          : `Insertados: ${insertedTrucks.length}.`,
-      });
-
-      rows.forEach((r) => {
-        const key = normalizePatente(r.patente);
-        const prev = photoNewByPatente[key];
-        if (prev?.previewUrl) URL.revokeObjectURL(prev.previewUrl);
-      });
-      setRows([]);
-      setPhotoNewByPatente({});
+      // Reset form
+      setNewTruck({ patente: "", carroceria: "camion_con_carro", marca: "", modelo: "", anio: "" });
+      setShowAddForm(false);
 
       if (empresaId) await loadExisting(empresaId);
     } catch (e) {
@@ -344,42 +156,36 @@ export function FleetForm() {
     }
   };
 
-  // --- guardar edición de existente ---
-  const saveExistingRow = async (t: ExistingTruck) => {
-    const patch = editById[t.id] ?? {};
+  // Iniciar edición
+  const startEdit = (t: ExistingTruck) => {
+    setEditingId(t.id);
+    setEditForm({
+      marca: t.marca || "",
+      modelo: t.modelo || "",
+      anio: t.anio ? String(t.anio) : "",
+      carroceria: t.carroceria || "camion_con_carro",
+    });
+  };
 
-    const marca = patch.marca !== undefined ? patch.marca : (t.marca ?? "");
-    const modelo = patch.modelo !== undefined ? patch.modelo : (t.modelo ?? "");
-    const carroceria = patch.carroceria !== undefined ? patch.carroceria : (t.carroceria ?? "CAMION_CON_CARRO");
-
-    const anioStr = patch.anio !== undefined ? patch.anio : (t.anio !== null ? String(t.anio) : "");
-    if (anioStr.trim() !== "" && parseYearOrNull(anioStr) === null) {
-      toast({ title: "Error", description: "Año inválido (1900–2100).", variant: "destructive" });
-      return;
-    }
-    const anio = parseYearOrNull(anioStr);
-
+  // Guardar edición
+  const saveEdit = async (t: ExistingTruck) => {
     try {
       const res = await fetch("/api/fleet", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           truckId: t.id,
-          marca: marca.trim() || null,
-          modelo: modelo.trim() || null,
-          anio,
-          carroceria,
+          marca: editForm.marca.trim() || null,
+          modelo: editForm.modelo.trim() || null,
+          anio: editForm.anio ? Number(editForm.anio) : null,
+          carroceria: editForm.carroceria,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "No se pudo actualizar el camión");
+      if (!res.ok) throw new Error(data?.error || "No se pudo actualizar");
 
-      toast({ title: "Actualizado", description: `Camión ${t.patente} actualizado.` });
-      setEditById((p) => {
-        const copy = { ...p };
-        delete copy[t.id];
-        return copy;
-      });
+      toast({ title: "Actualizado", description: `Camión ${t.patente} actualizado` });
+      setEditingId(null);
 
       if (empresaId) await loadExisting(empresaId);
     } catch (e) {
@@ -387,361 +193,307 @@ export function FleetForm() {
     }
   };
 
-  // --- guardar foto existente (placeholder) ---
-  const saveExistingPhoto = async (t: ExistingTruck) => {
-    const photo = photoExisting[t.id];
-    if (!photo) {
-      toast({ title: "Falta foto", description: "Selecciona una foto primero.", variant: "destructive" });
-      return;
-    }
-
+  const handleLogout = async () => {
     try {
-      const fakeUrl = `pending-upload://${normalizePatente(t.patente)}`;
-
-      const res = await fetch("/api/truck-photo", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ camionId: t.id, url: fakeUrl }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "No se pudo guardar la foto");
-
-      toast({ title: "Foto registrada", description: `Foto guardada para ${t.patente} (placeholder).` });
-
-      if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
-      setPhotoExisting((p) => {
-        const copy = { ...p };
-        delete copy[t.id];
-        return copy;
-      });
-
-      if (empresaId) await loadExisting(empresaId);
-    } catch (e) {
-      toast({ title: "Error", description: e instanceof Error ? e.message : "Error", variant: "destructive" });
+      await fetch("/api/cliente/logout", { method: "POST", credentials: "include" });
+    } finally {
+      router.replace("/cliente");
+      router.refresh();
     }
   };
 
-  // --- render estados ---
-  if (loadingEmpresa) return <div className="p-4">Cargando sesión de cliente...</div>;
-  if (!empresaId) return <div className="p-4 text-red-600">No se pudo identificar la empresa. Vuelve a ingresar.</div>;
+  if (loadingEmpresa) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "300px" }}>
+        <p style={{ color: "#666" }}>Cargando sesión...</p>
+      </div>
+    );
+  }
+
+  if (!empresaId) {
+    return (
+      <div style={{ textAlign: "center", padding: "3rem" }}>
+        <p style={{ color: "#dc2626", marginBottom: "1rem" }}>No se pudo identificar la empresa.</p>
+        <Link href="/cliente/ingresar" style={{ color: "var(--primary)", fontWeight: 600 }}>
+          Ir a ingresar
+        </Link>
+      </div>
+    );
+  }
 
   return (
-    <>
-      {/* Botones navegación */}
-      <div className="flex gap-3 mb-6">
-        <Button variant="outline" type="button" onClick={() => router.push("/cliente")}>
-          ← Volver
-        </Button>
-        <Button variant="outline" type="button" onClick={async () => {
-          try {
-            await fetch("/api/cliente/logout", {
-              method: "POST",
-              credentials: "include",  
-            });
-          } finally {
-            router.replace("/");
-            router.refresh();
-          }
-        }}
+    <div style={{ maxWidth: "800px", margin: "0 auto", padding: "2rem 1rem" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2rem" }}>
+        <button
+          onClick={() => router.push("/cliente")}
+          style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "none", border: "none", cursor: "pointer", color: "#666" }}
         >
-          Cerrar sesión
-        </Button>  
+          <ArrowLeft size={20} />
+          <span>Volver</span>
+        </button>
+        <button
+          onClick={handleLogout}
+          style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "none", border: "1px solid #ddd", borderRadius: "8px", padding: "0.5rem 1rem", cursor: "pointer", color: "#666" }}
+        >
+          <LogOut size={16} />
+          <span>Cerrar sesión</span>
+        </button>
       </div>
-      <Card className="shadow-xl">
-        <CardHeader>
-          <CardTitle>Registro de Flota</CardTitle>
-          <CardDescription>Editar camiones, agregar nuevos y registrar foto (placeholder).</CardDescription>
-        </CardHeader>
 
-        <CardContent className="space-y-8">
-          {/* Existentes */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="font-semibold">Camiones registrados</h3>
-              <Button variant="outline" onClick={() => loadExisting(empresaId)} disabled={loadingExisting}>
-                {loadingExisting ? "Actualizando..." : "Actualizar"}
-              </Button>
+      {/* Title */}
+      <div style={{ textAlign: "center", marginBottom: "2rem" }}>
+        <h1 style={{ fontSize: "1.75rem", fontWeight: "bold", color: "#121212", marginBottom: "0.5rem" }}>
+          Mi Flota
+        </h1>
+        <p style={{ color: "#666" }}>Administra los camiones de tu empresa</p>
+      </div>
+
+      {/* Lista de camiones existentes */}
+      <div style={{ background: "white", borderRadius: "12px", border: "1px solid #e5e5e5", padding: "1.5rem", marginBottom: "1.5rem" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <h2 style={{ fontSize: "1.1rem", fontWeight: "600" }}>Camiones registrados ({existing.length})</h2>
+          <button
+            onClick={() => empresaId && loadExisting(empresaId)}
+            disabled={loadingExisting}
+            style={{ display: "flex", alignItems: "center", gap: "0.5rem", background: "none", border: "1px solid #ddd", borderRadius: "6px", padding: "0.4rem 0.8rem", cursor: "pointer", fontSize: "0.85rem" }}
+          >
+            <RefreshCw size={14} className={loadingExisting ? "animate-spin" : ""} />
+            Actualizar
+          </button>
+        </div>
+
+        {existing.length === 0 ? (
+          <p style={{ color: "#999", textAlign: "center", padding: "2rem 0" }}>
+            Aún no tienes camiones registrados
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {existing.map((t) => (
+              <div
+                key={t.id}
+                style={{
+                  border: "1px solid #e5e5e5",
+                  borderRadius: "8px",
+                  padding: "1rem",
+                  background: editingId === t.id ? "#f9f9f9" : "white",
+                }}
+              >
+                {editingId === t.id ? (
+                  // Modo edición
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                      <span style={{ fontWeight: "bold", fontSize: "1.1rem" }}>{t.patente}</span>
+                      <div style={{ display: "flex", gap: "0.5rem" }}>
+                        <button
+                          onClick={() => saveEdit(t)}
+                          style={{ background: "var(--primary)", color: "white", border: "none", borderRadius: "6px", padding: "0.4rem 0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.3rem" }}
+                        >
+                          <Check size={14} /> Guardar
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          style={{ background: "#f3f3f3", border: "none", borderRadius: "6px", padding: "0.4rem 0.8rem", cursor: "pointer" }}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>Marca</label>
+                        <input
+                          type="text"
+                          value={editForm.marca}
+                          onChange={(e) => setEditForm(p => ({ ...p, marca: e.target.value }))}
+                          placeholder="Volvo"
+                          style={{ width: "100%", padding: "0.6rem", border: "1px solid #ddd", borderRadius: "6px" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>Modelo</label>
+                        <input
+                          type="text"
+                          value={editForm.modelo}
+                          onChange={(e) => setEditForm(p => ({ ...p, modelo: e.target.value }))}
+                          placeholder="FH16"
+                          style={{ width: "100%", padding: "0.6rem", border: "1px solid #ddd", borderRadius: "6px" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>Año</label>
+                        <input
+                          type="text"
+                          value={editForm.anio}
+                          onChange={(e) => setEditForm(p => ({ ...p, anio: e.target.value }))}
+                          placeholder="2020"
+                          inputMode="numeric"
+                          style={{ width: "100%", padding: "0.6rem", border: "1px solid #ddd", borderRadius: "6px" }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: "0.8rem", color: "#666", display: "block", marginBottom: "0.25rem" }}>Carrocería</label>
+                        <select
+                          value={editForm.carroceria}
+                          onChange={(e) => setEditForm(p => ({ ...p, carroceria: e.target.value }))}
+                          style={{ width: "100%", padding: "0.6rem", border: "1px solid #ddd", borderRadius: "6px" }}
+                        >
+                          {CARROCERIAS.map((c) => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  // Modo vista
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div>
+                      <span style={{ fontWeight: "bold", fontSize: "1.1rem", marginRight: "1rem" }}>{t.patente}</span>
+                      <span style={{ color: "#666", fontSize: "0.9rem" }}>
+                        {[t.marca, t.modelo, t.anio].filter(Boolean).join(" · ") || "Sin detalles"}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => startEdit(t)}
+                      style={{ background: "none", border: "1px solid #ddd", borderRadius: "6px", padding: "0.4rem 0.8rem", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.85rem" }}
+                    >
+                      <Edit2 size={14} /> Editar
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Agregar nuevo camión */}
+      <div style={{ background: "white", borderRadius: "12px", border: "1px solid #e5e5e5", padding: "1.5rem" }}>
+        {!showAddForm ? (
+          <button
+            onClick={() => setShowAddForm(true)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.5rem",
+              padding: "1rem",
+              background: "none",
+              border: "2px dashed #ddd",
+              borderRadius: "8px",
+              cursor: "pointer",
+              color: "#666",
+              fontSize: "1rem",
+            }}
+          >
+            <Plus size={20} />
+            Agregar camión
+          </button>
+        ) : (
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+              <h3 style={{ fontSize: "1.1rem", fontWeight: "600" }}>Nuevo camión</h3>
+              <button
+                onClick={() => setShowAddForm(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "#999" }}
+              >
+                <X size={20} />
+              </button>
             </div>
 
-            {existing.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aún no hay camiones registrados.</p>
-            ) : (
-              <div className="overflow-auto border rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="p-2 text-left">Patente</th>
-                      <th className="p-2 text-left">Marca</th>
-                      <th className="p-2 text-left">Modelo</th>
-                      <th className="p-2 text-left">Año</th>
-                      <th className="p-2 text-left">Carrocería</th>
-                      <th className="p-2 text-left">Foto</th>
-                      <th className="p-2 text-left">Acciones</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {existing.map((t) => {
-                      const patch = editById[t.id] ?? {};
-                      const effectiveMarca = patch.marca ?? (t.marca ?? "");
-                      const effectiveModelo = patch.modelo ?? (t.modelo ?? "");
-                      const effectiveAnio = patch.anio ?? (t.anio !== null ? String(t.anio) : "");
-                      const effectiveCarroceria = (patch.carroceria ?? (t.carroceria ?? "CAMION_CON_CARRO")) as Carroceria;
-
-                      const photo = photoExisting[t.id];
-
-                      return (
-                        <tr key={t.id} className="border-t align-top">
-                          <td className="p-2 font-medium">{t.patente}</td>
-
-                          <td className="p-2 min-w-[160px]">
-                            <Input
-                              value={effectiveMarca}
-                              onChange={(e) =>
-                                setEditById((p) => ({
-                                  ...p,
-                                  [t.id]: { ...(p[t.id] ?? {}), marca: e.target.value },
-                                }))
-                              }
-                            />
-                          </td>
-
-                          <td className="p-2 min-w-[160px]">
-                            <Input
-                              value={effectiveModelo}
-                              onChange={(e) =>
-                                setEditById((p) => ({
-                                  ...p,
-                                  [t.id]: { ...(p[t.id] ?? {}), modelo: e.target.value },
-                                }))
-                              }
-                            />
-                          </td>
-
-                          <td className="p-2 min-w-[110px]">
-                            <Input
-                              value={effectiveAnio}
-                              inputMode="numeric"
-                              placeholder="2020"
-                              onChange={(e) =>
-                                setEditById((p) => ({
-                                  ...p,
-                                  [t.id]: { ...(p[t.id] ?? {}), anio: e.target.value },
-                                }))
-                              }
-                            />
-                          </td>
-
-                          <td className="p-2 min-w-[190px]">
-                            <select
-                              className="w-full h-10 rounded-md border px-2"
-                              value={effectiveCarroceria}
-                              onChange={(e) =>
-                                setEditById((p) => ({
-                                  ...p,
-                                  [t.id]: { ...(p[t.id] ?? {}), carroceria: e.target.value as Carroceria },
-                                }))
-                              }
-                            >
-                              {CARROCERIAS.map((c) => (
-                                <option key={c.value} value={c.value}>
-                                  {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-
-                          <td className="p-2 min-w-[240px] space-y-2">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs">{t.foto_url ? "✅ registrada" : "— sin foto"}</span>
-                              <Button type="button" variant="outline" onClick={() => openPickerExisting(t.id)}>
-                                {photo ? "Cambiar" : "Seleccionar"}
-                              </Button>
-                            </div>
-
-                            {photo ? (
-                              <div className="relative w-full h-32 rounded-md overflow-hidden border">
-                                <Image
-                                  src={photo.previewUrl}
-                                  alt={`Foto ${t.patente}`}
-                                  fill
-                                  className="object-contain bg-white"
-                                />
-                              </div>
-                            ) : null}
-
-                            <input
-                              ref={(el) => {
-                                fileRefsExisting.current[t.id] = el;
-                              }}
-                              className="hidden"
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => pickPhotoExisting(t.id, e.target.files?.[0] ?? null)}
-                            />
-
-                            <Button type="button" className="w-full" onClick={() => saveExistingPhoto(t)}>
-                              Guardar foto
-                            </Button>
-                          </td>
-
-                          <td className="p-2 min-w-[160px]">
-                            <Button type="button" className="w-full" onClick={() => saveExistingRow(t)}>
-                              Guardar cambios
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Nuevos */}
-          <div className="space-y-4">
-            <h3 className="font-semibold">Agregar camiones</h3>
-
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div style={{ display: "grid", gap: "1rem" }}>
               <div>
-                <label className="text-sm font-medium">Carrocería por defecto</label>
+                <label style={{ fontSize: "0.85rem", fontWeight: "500", display: "block", marginBottom: "0.4rem" }}>
+                  Patente *
+                </label>
+                <input
+                  type="text"
+                  value={newTruck.patente}
+                  onChange={(e) => setNewTruck(p => ({ ...p, patente: e.target.value.toUpperCase() }))}
+                  placeholder="ABCD12"
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #ddd", borderRadius: "8px", fontSize: "1rem" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: "0.85rem", fontWeight: "500", display: "block", marginBottom: "0.4rem" }}>
+                  Tipo de carrocería
+                </label>
                 <select
-                  className="w-full h-10 rounded-md border px-3"
-                  value={defaultCarroceria}
-                  onChange={(e) => setDefaultCarroceria(e.target.value as Carroceria)}
+                  value={newTruck.carroceria}
+                  onChange={(e) => setNewTruck(p => ({ ...p, carroceria: e.target.value as Carroceria }))}
+                  style={{ width: "100%", padding: "0.75rem", border: "1px solid #ddd", borderRadius: "8px", fontSize: "1rem" }}
                 >
                   {CARROCERIAS.map((c) => (
-                    <option key={c.value} value={c.value}>
-                      {c.label}
-                    </option>
+                    <option key={c.value} value={c.value}>{c.label}</option>
                   ))}
                 </select>
               </div>
 
-              <div>
-                <label className="text-sm font-medium">Pegar patentes (una por línea)</label>
-                <textarea
-                  className="w-full min-h-[96px] rounded-md border p-2 text-sm"
-                  value={paste}
-                  onChange={(e) => setPaste(e.target.value)}
-                  placeholder="ABCD12&#10;EFGH34"
-                />
-                <Button className="mt-2" variant="outline" type="button" onClick={handleGenerateRows}>
-                  Generar filas
-                </Button>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.75rem" }}>
+                <div>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "500", display: "block", marginBottom: "0.4rem" }}>
+                    Marca
+                  </label>
+                  <input
+                    type="text"
+                    value={newTruck.marca}
+                    onChange={(e) => setNewTruck(p => ({ ...p, marca: e.target.value }))}
+                    placeholder="Volvo"
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #ddd", borderRadius: "8px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "500", display: "block", marginBottom: "0.4rem" }}>
+                    Modelo
+                  </label>
+                  <input
+                    type="text"
+                    value={newTruck.modelo}
+                    onChange={(e) => setNewTruck(p => ({ ...p, modelo: e.target.value }))}
+                    placeholder="FH16"
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #ddd", borderRadius: "8px" }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: "0.85rem", fontWeight: "500", display: "block", marginBottom: "0.4rem" }}>
+                    Año
+                  </label>
+                  <input
+                    type="text"
+                    value={newTruck.anio}
+                    onChange={(e) => setNewTruck(p => ({ ...p, anio: e.target.value }))}
+                    placeholder="2020"
+                    inputMode="numeric"
+                    style={{ width: "100%", padding: "0.75rem", border: "1px solid #ddd", borderRadius: "8px" }}
+                  />
+                </div>
               </div>
+
+              <button
+                onClick={handleAddTruck}
+                disabled={saving}
+                style={{
+                  width: "100%",
+                  padding: "1rem",
+                  background: "var(--primary)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontWeight: "bold",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  opacity: saving ? 0.7 : 1,
+                  marginTop: "0.5rem",
+                }}
+              >
+                {saving ? "Guardando..." : "Agregar camión"}
+              </button>
             </div>
-
-            {rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Agrega patentes para crear filas.</p>
-            ) : (
-              <div className="overflow-auto border rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="p-2 text-left">Patente</th>
-                      <th className="p-2 text-left">Carrocería</th>
-                      <th className="p-2 text-left">Marca</th>
-                      <th className="p-2 text-left">Modelo</th>
-                      <th className="p-2 text-left">Año</th>
-                      <th className="p-2 text-left">Foto</th>
-                      <th />
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {rows.map((r, i) => {
-                      const key = normalizePatente(r.patente);
-                      const isDup = duplicatesInForm.has(key);
-                      const photo = photoNewByPatente[key];
-
-                      return (
-                        <tr key={i} className={isDup ? "bg-red-50" : "border-t align-top"}>
-                          <td className="p-2 min-w-[140px]">
-                            <Input
-                              value={r.patente}
-                              onChange={(e) => updateRow(i, { patente: e.target.value })}
-                              className={isDup ? "border-red-400" : ""}
-                            />
-                          </td>
-
-                          <td className="p-2 min-w-[190px]">
-                            <select
-                              className="w-full h-10 rounded-md border px-2"
-                              value={r.carroceria}
-                              onChange={(e) => updateRow(i, { carroceria: e.target.value as Carroceria })}
-                            >
-                              {CARROCERIAS.map((c) => (
-                                <option key={c.value} value={c.value}>
-                                  {c.label}
-                                </option>
-                              ))}
-                            </select>
-                          </td>
-
-                          <td className="p-2 min-w-[160px]">
-                            <Input value={r.marca} onChange={(e) => updateRow(i, { marca: e.target.value })} />
-                          </td>
-
-                          <td className="p-2 min-w-[160px]">
-                            <Input value={r.modelo} onChange={(e) => updateRow(i, { modelo: e.target.value })} />
-                          </td>
-
-                          <td className="p-2 min-w-[110px]">
-                            <Input
-                              value={r.anio}
-                              inputMode="numeric"
-                              placeholder="2020"
-                              onChange={(e) => updateRow(i, { anio: e.target.value })}
-                            />
-                          </td>
-
-                          <td className="p-2 min-w-[240px] space-y-2">
-                            <Button type="button" variant="outline" onClick={() => openPickerNew(r.patente)}>
-                              {photo ? "Cambiar foto" : "Agregar foto"}
-                            </Button>
-
-                            {photo ? (
-                              <div className="relative w-full h-32 rounded-md overflow-hidden border">
-                                <Image src={photo.previewUrl} alt={`Foto ${key}`} fill className="object-contain bg-white" />
-                              </div>
-                            ) : (
-                              <p className="text-xs text-muted-foreground">
-                                Opcional: puedes agregar foto ahora o después.
-                              </p>
-                            )}
-
-                            <input
-                              ref={(el) => {
-                                fileRefsNew.current[key] = el;
-                              }}
-                              className="hidden"
-                              type="file"
-                              accept="image/*"
-                              onChange={(e) => pickPhotoNew(r.patente, e.target.files?.[0] ?? null)}
-                            />
-                          </td>
-
-                          <td className="p-2">
-                            <Button variant="outline" type="button" onClick={() => removeRow(i)}>
-                              Quitar
-                            </Button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <Button className="w-full" onClick={handleSaveNew} disabled={saving || rows.length === 0}>
-              {saving ? "Guardando..." : "Guardar nuevos camiones"}
-            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </>
+        )}
+      </div>
+    </div>
   );
 }

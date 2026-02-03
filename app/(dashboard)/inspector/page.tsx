@@ -132,7 +132,6 @@ export default function InspectorFleetPage() {
     router.push(`/inspector/inspeccion/${camion.id}`);
   };
 
-  // Badges mejorados con mejor touch target (mínimo 44x44px área táctil)
   const getEstadoBadge = (estado?: string) => {
     switch (estado) {
       case "disponible":
@@ -180,40 +179,20 @@ export default function InspectorFleetPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-0 z-40">
+      {/* Header Sticky Simplificado y Posicionado Correctamente */}
+      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-16 z-40">
         <div className="px-4 py-4">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-600 rounded-xl flex items-center justify-center">
-                <Truck className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <span className="text-xs text-neutral-400 font-medium uppercase tracking-wide">
-                  TRUCK CHECKS
-                </span>
-              </div>
-            </div>
-            <div className="w-10 h-10 bg-neutral-800 rounded-full flex items-center justify-center">
-              <span className="text-sm font-bold text-white">
-                {inspector?.nombre?.charAt(0) || "I"}
-              </span>
-            </div>
-          </div>
+           <h1 className="text-xl font-bold text-white mb-1">Tu Flota</h1>
+           <p className="text-sm text-neutral-400">
+            Bienvenido, {inspector?.nombre || "Inspector"}. Selecciona para comenzar.
+           </p>
         </div>
       </header>
 
       {/* Content */}
       <div className="px-4 py-6">
-        {/* Title Section */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-neutral-900 mb-1">Tu Flota</h1>
-          <p className="text-neutral-500 text-sm">
-            Bienvenido, {inspector?.nombre || "Inspector"}. Selecciona para comenzar inspección.
-          </p>
-        </div>
-
-        {/* Search Bar - Altura mínima 48px para móvil */}
+        
+        {/* Search Bar */}
         <div className="relative mb-4">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-neutral-400" />
           <input
