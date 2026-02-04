@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import sql from "mssql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
+export const runtime = "nodejs";
+
 let poolPromise: Promise<sql.ConnectionPool> | null = null;
 
 function getPool() {
@@ -24,29 +26,30 @@ function isValidDatetimeLocal(s: unknown) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
 }
 
-// ✅ parser robusto del id (params o pathname)
+// parser robusto del id (params o pathname)
 function parseInspeccionId(req: NextRequest, params?: { id?: string }) {
   const fromParams = params?.id;
-  const fromPath = req.nextUrl.pathname.split("/").filter(Boolean).pop(); // último segmento
-
+  const fromPath = req.nextUrl.pathname.split("/").filter(Boolean).pop();
   const raw = (fromParams ?? fromPath ?? "").trim();
-
-  // extra: si viniera algo raro, nos quedamos con dígitos
   const onlyDigits = raw.replace(/[^\d]/g, "");
   const n = Number(onlyDigits);
-
   if (!Number.isInteger(n) || n <= 0) return null;
   return n;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+// ✅ IMPORTANTE: en tu Next, params viene como Promise
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
     const session = requireAdmin(req);
     if (!session) {
       return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
     }
 
-    const inspeccionId = parseInspeccionId(req, params);
+    const { id } = await ctx.params;
+    const inspeccionId = parseInspeccionId(req, { id });
+
     if (!inspeccionId) {
       return NextResponse.json({ ok: false, error: "id inválido" }, { status: 400 });
     }
@@ -59,8 +62,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     const action = (body as any).action;
     const pool = await getPool();
 
-    // Debe existir
-    const current = await pool.request()
+    // Debe existir y ser PROGRAMADA
+    const current = await pool
+      .request()
       .input("id", sql.Int, inspeccionId)
       .query(`
         SELECT TOP 1 id, estado
@@ -82,7 +86,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     // ✅ CANCELAR
     if (action === "CANCELAR") {
-      await pool.request()
+      await pool
+        .request()
         .input("id", sql.Int, inspeccionId)
         .query(`
           UPDATE dbo.inspecciones
@@ -93,10 +98,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       return NextResponse.json({ ok: true });
     }
 
-    // ✅ REAGENDAR (con inspector opcional)
+    // ✅ REAGENDAR
     if (action === "REAGENDAR") {
       const fechaLocal = (body as any).fechaProgramada;
-      const obs = typeof (body as any).observaciones === "string" ? (body as any).observaciones.trim() : null;
+      const obs =
+        typeof (body as any).observaciones === "string"
+          ? (body as any).observaciones.trim()
+          : null;
 
       const inspectorIdRaw = (body as any).inspectorId;
       const inspectorId =
@@ -111,11 +119,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         return NextResponse.json({ ok: false, error: "inspectorId inválido" }, { status: 400 });
       }
 
-      const fechaSql = `${fechaLocal.replace("T", " ")}:00`;
+      const fechaSql = `${String(fechaLocal).replace("T", " ")}:00`; // YYYY-MM-DD HH:mm:00
 
-      // Validar inspector robusto
+      // Validar inspector si viene
       if (inspectorId !== null) {
-        const insp = await pool.request()
+        const insp = await pool
+          .request()
           .input("id", sql.Int, inspectorId)
           .query(`
             SELECT TOP 1 id
@@ -133,24 +142,26 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
         }
       }
 
-      // Validación futura (local)
-      await pool.request()
+      // Validación futura
+      await pool
+        .request()
         .input("fecha", sql.NVarChar(19), fechaSql)
         .query(`
           IF (CONVERT(datetime2, @fecha, 120) < DATEADD(minute, 1, SYSDATETIME()))
             THROW 50001, 'La fecha debe ser futura', 1;
         `);
 
-      await pool.request()
+      await pool
+        .request()
         .input("id", sql.Int, inspeccionId)
         .input("fecha", sql.NVarChar(19), fechaSql)
-        .input("inspectorId", sql.Int, inspectorId)
+        .input("inspectorId", sql.Int, inspectorId as any) // null ok
         .input("obs", sql.NVarChar(sql.MAX), obs)
         .query(`
           UPDATE dbo.inspecciones
           SET
             fecha_programada = CONVERT(datetime2, @fecha, 120),
-            fecha_inspeccion = CONVERT(datetime2, @fecha, 120),
+            fecha_inspeccion = CONVERT(date, @fecha, 120),
             inspector_id = @inspectorId,
             observaciones_generales = COALESCE(NULLIF(@obs, ''), observaciones_generales)
           WHERE id = @id
