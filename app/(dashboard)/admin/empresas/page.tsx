@@ -5,11 +5,11 @@ import AdminShell from "../_components/AdminShell"
 
 type Empresa = {
   id: number
-  nombre: string | null
-  rut: string | null
-  rubro: string | null
-  email_contacto: string | null
-  telefono_contacto: string | null
+  nombre: string
+  rut: string
+  rubro: string
+  email_contacto: string
+  telefono_contacto: string
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -29,6 +29,7 @@ const styles: Record<string, React.CSSProperties> = {
   ok: { border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", borderRadius: 14, padding: 10, marginBottom: 12, fontWeight: 800 },
 }
 
+// helper: parse JSON sin romper si viene vacío o HTML
 async function safeJson(res: Response) {
   const text = await res.text()
   if (!text) return null
@@ -54,9 +55,14 @@ export default function AdminEmpresasPage() {
       const r = await fetch("/api/admin/empresas", { cache: "no-store" })
       const j = await safeJson(r)
 
-      if (!r.ok) throw new Error(j?.error || `Error al cargar empresas (${r.status})`)
-      if (!j?.ok) throw new Error(j?.error || "Respuesta inválida del servidor")
+      if (!r.ok) {
+        throw new Error(j?.error || `Error al cargar empresas (${r.status})`)
+      }
+      if (!j?.ok) {
+        throw new Error(j?.error || "Respuesta inválida del servidor")
+      }
 
+      // ✅ AQUÍ ESTABA EL PROBLEMA: el backend entrega "empresas"
       const list = Array.isArray(j.empresas) ? j.empresas : []
       setItems(list)
     } catch (e: any) {
@@ -119,11 +125,7 @@ export default function AdminEmpresasPage() {
   }
 
   return (
-    <AdminShell title="Empresas">
-      <div style={{ color: "#6b7280", fontWeight: 700, marginBottom: 12 }}>
-        Listado y edición de datos. (Reset PIN opcional)
-      </div>
-
+    <AdminShell title="Empresas" subtitle="Listado y edición de datos. (Reset PIN opcional)">
       {err ? <div style={styles.err}>{err}</div> : null}
       {ok ? <div style={styles.ok}>{ok}</div> : null}
 
@@ -147,48 +149,21 @@ export default function AdminEmpresasPage() {
 
         {items.map((it) => {
           const local = edit[it.id] || {}
-          const v = (k: keyof Empresa) => {
-            const raw = (local[k] ?? it[k]) as any
-            return raw == null ? "" : String(raw)
-          }
+          const v = (k: keyof Empresa) => (local[k] ?? it[k]) as string
 
           return (
             <div key={it.id} style={styles.row}>
               <div style={{ fontWeight: 900 }}>{it.id}</div>
 
-              <input
-                style={styles.input}
-                value={v("nombre")}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))}
-              />
-              <input
-                style={styles.input}
-                value={v("rut")}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rut: e.target.value } }))}
-              />
-              <input
-                style={styles.input}
-                value={v("rubro")}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rubro: e.target.value } }))}
-              />
-              <input
-                style={styles.input}
-                value={v("email_contacto")}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email_contacto: e.target.value } }))}
-              />
-              <input
-                style={styles.input}
-                value={v("telefono_contacto")}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], telefono_contacto: e.target.value } }))}
-              />
+              <input style={styles.input} value={v("nombre")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))} />
+              <input style={styles.input} value={v("rut")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rut: e.target.value } }))} />
+              <input style={styles.input} value={v("rubro")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rubro: e.target.value } }))} />
+              <input style={styles.input} value={v("email_contacto")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email_contacto: e.target.value } }))} />
+              <input style={styles.input} value={v("telefono_contacto")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], telefono_contacto: e.target.value } }))} />
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button style={styles.btn} onClick={() => guardar(it.id)}>
-                  Guardar
-                </button>
-                <button style={styles.btnSoft} onClick={() => resetPin(it.id)}>
-                  Reset PIN
-                </button>
+                <button style={styles.btn} onClick={() => guardar(it.id)}>Guardar</button>
+                <button style={styles.btnSoft} onClick={() => resetPin(it.id)}>Reset PIN</button>
               </div>
             </div>
           )
