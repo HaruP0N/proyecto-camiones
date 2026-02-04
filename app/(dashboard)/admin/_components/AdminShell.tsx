@@ -1,400 +1,334 @@
 "use client";
 
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    display: "flex",
-    background: "#F3F4F6",
-    fontFamily: "system-ui, -apple-system, Segoe UI, Roboto, Arial",
-  } as React.CSSProperties,
-
-  sidebar: {
-    width: 260,
-    background: "#1F2937",
-    color: "white",
-    padding: 20,
-    boxSizing: "border-box",
-    borderRight: "1px solid #374151",
-  } as React.CSSProperties,
-
-  brandRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 32,
-    paddingBottom: 20,
-    borderBottom: "1px solid #374151",
-  } as React.CSSProperties,
-
-  brand: {
-    fontSize: 20,
-    fontWeight: 800,
-    letterSpacing: -0.5,
-    color: "white",
-  } as React.CSSProperties,
-
-  nav: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-  } as React.CSSProperties,
-
-  main: {
-    flex: 1,
-    padding: 24,
-    boxSizing: "border-box",
-    maxWidth: 1600,
-    margin: "0 auto",
-  } as React.CSSProperties,
-
-  topBar: {
-    background: "white",
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 24,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
-  } as React.CSSProperties,
-
-  title: {
-    fontSize: 24,
-    fontWeight: 700,
-    color: "#111827",
-    letterSpacing: -0.5,
-  } as React.CSSProperties,
-
-  subt: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginTop: 4,
-  } as React.CSSProperties,
-
-  content: {
-    minHeight: 400,
-  } as React.CSSProperties,
-
-  avatarBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: "50%",
-    border: "2px solid #E5E7EB",
-    background: "linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 700,
-    fontSize: 14,
-    color: "white",
-    cursor: "pointer",
-    userSelect: "none",
-    transition: "all 0.2s",
-  } as React.CSSProperties,
-
-  menu: {
-    position: "absolute",
-    top: 54,
-    right: 0,
-    width: 260,
-    background: "white",
-    border: "1px solid #E5E7EB",
-    borderRadius: 12,
-    boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
-    overflow: "hidden",
-    zIndex: 50,
-  } as React.CSSProperties,
-
-  menuHeader: {
-    padding: 16,
-    background: "#F9FAFB",
-    borderBottom: "1px solid #E5E7EB",
-  } as React.CSSProperties,
-
-  menuName: {
-    fontWeight: 700,
-    color: "#111827",
-    fontSize: 14,
-  } as React.CSSProperties,
-
-  menuSub: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 2,
-  } as React.CSSProperties,
-
-  menuItem: {
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    padding: "12px 16px",
-    background: "white",
-    border: "none",
-    cursor: "pointer",
-    fontWeight: 600,
-    fontSize: 14,
-    color: "#374151",
-    textDecoration: "none",
-    transition: "background 0.15s",
-  } as React.CSSProperties,
-
-  menuDanger: {
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    padding: "12px 16px",
-    background: "white",
-    border: "none",
-    borderTop: "1px solid #E5E7EB",
-    cursor: "pointer",
-    fontWeight: 700,
-    fontSize: 14,
-    color: "#DC2626",
-    transition: "background 0.15s",
-  } as React.CSSProperties,
-};
-
-function navItem(active: boolean): React.CSSProperties {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "12px 14px",
-    borderRadius: 8,
-    textDecoration: "none",
-    color: active ? "white" : "#D1D5DB",
-    background: active ? "#3B82F6" : "transparent",
-    fontWeight: 600,
-    fontSize: 14,
-    transition: "all 0.2s",
-  };
-}
-
-type MePayload = { nombre?: string | null; email?: string | null; role?: string | null };
-
-function initialsFrom(name?: string | null, email?: string | null) {
-  const src = (name && name.trim()) || (email && email.trim()) || "U";
-  const parts = src.split(" ").filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return src.slice(0, 2).toUpperCase();
-}
-
-async function safeJson(res: Response) {
-  const t = await res.text();
-  if (!t) return null;
-  try {
-    return JSON.parse(t);
-  } catch {
-    return null;
-  }
-}
 
 export default function AdminShell({
   title,
-  subtitle,
   children,
 }: {
   title: string;
-  subtitle?: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const items = useMemo(
-    () => [
-      { href: "/admin", label: "📊 Dashboard" },
-      { href: "/admin/inspectores", label: "👥 Inspectores" },
-      { href: "/admin/empresas", label: "🏢 Empresas" },
-      { href: "/admin/camiones", label: "🚛 Inspecciones" },
-    ],
-    []
-  );
+  const INSPECCIONES_HREF = "/admin/inspecciones";
 
-  const [open, setOpen] = useState(false);
-  const [me, setMe] = useState<MePayload | null>(null);
-  const [loggingOut, setLoggingOut] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const items = [
+    { href: "/admin", label: "Inicio", icon: <HomeIcon /> },
+    { href: "/admin/inspectores", label: "Inspectores", icon: <UsersIcon /> },
+    { href: "/admin/empresas", label: "Empresas", icon: <BuildingIcon /> },
+    { href: INSPECCIONES_HREF, label: "Inspecciones", icon: <ClipboardIcon /> },
+  ];
+
+  const [openUser, setOpenUser] = useState(false);
+  const userRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    (async () => {
-      const tries = ["/api/staff/me", "/api/admin/me", "/api/me"];
-      for (const url of tries) {
-        try {
-          const r = await fetch(url, { cache: "no-store", credentials: "include" });
-          const j = await safeJson(r);
-          if (!r.ok) continue;
-
-          const payload = j && typeof j === "object" && "data" in j ? (j as any).data : j;
-          if (payload && typeof payload === "object") {
-            setMe({
-              nombre: (payload as any).nombre ?? (payload as any).name ?? null,
-              email: (payload as any).email ?? null,
-              role: (payload as any).role ?? null,
-            });
-            return;
-          }
-        } catch {}
-      }
-      setMe(null);
-    })();
-  }, []);
-
-  useEffect(() => {
-    function onDocDown(e: MouseEvent) {
-      if (!open) return;
-      const el = wrapRef.current;
+    function onDocMouseDown(e: MouseEvent) {
+      if (!openUser) return;
+      const el = userRef.current;
       if (!el) return;
-      if (e.target instanceof Node && !el.contains(e.target)) setOpen(false);
+      if (e.target instanceof Node && !el.contains(e.target)) setOpenUser(false);
     }
-    function onEsc(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenUser(false);
     }
-    document.addEventListener("mousedown", onDocDown);
-    document.addEventListener("keydown", onEsc);
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", onDocDown);
-      document.removeEventListener("keydown", onEsc);
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [openUser]);
 
-  const logout = async () => {
-    if (loggingOut) return;
-    
-    setLoggingOut(true);
-    setOpen(false);
+  function go(href: string) {
+    setOpenUser(false);
+    router.push(href);
+  }
 
-    try {
-      // Intentar con el endpoint de staff
-      await fetch("/api/staff/logout", { 
-        method: "POST", 
-        credentials: "include" 
-      }).catch(() => {});
+  async function logout() {
+    setOpenUser(false);
+    // si tienes endpoint real, cámbialo:
+    // await fetch("/api/logout", { method: "POST", credentials: "include" });
+    router.push("/login");
+  }
 
-      // Intentar con endpoint de admin
-      await fetch("/api/admin/logout", { 
-        method: "POST", 
-        credentials: "include" 
-      }).catch(() => {});
-
-      // Limpiar datos locales
-      if (typeof window !== 'undefined') {
-        try { localStorage.clear(); } catch {}
-        try { sessionStorage.clear(); } catch {}
-      }
-
-      // Redirigir
-      router.push("/");
-      router.refresh();
-    } catch (error) {
-      console.error("Error durante logout:", error);
-      router.push("/");
-      router.refresh();
-    } finally {
-      setLoggingOut(false);
-    }
-  };
-
-  const initials = initialsFrom(me?.nombre ?? null, me?.email ?? null);
+  const userMenu = [
+    { label: "Mi perfil", icon: <UserIcon />, onClick: () => go("/admin/perfil") },
+    { label: "Editar perfil", icon: <EditIcon />, onClick: () => go("/admin/perfil/editar") },
+    { label: "Imbox", icon: <InboxIcon />, onClick: () => go("/admin/imbox") },
+    { label: "Help", icon: <HelpIcon />, onClick: () => go("/admin/help") },
+  ];
 
   return (
-    <div style={styles.page}>
-      <aside style={styles.sidebar}>
-        <div style={styles.brandRow}>
-          <div style={styles.brand}>Petran Admin</div>
+    <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "100vh" }}>
+      {/* SIDEBAR */}
+      <aside
+        style={{
+          background: "linear-gradient(180deg, #0b1220 0%, #0b1220 20%, #0a1020 100%)",
+          padding: 22,
+        }}
+      >
+        <div style={{ color: "white", fontWeight: 900, fontSize: 28, marginBottom: 18 }}>
+          Petran · Admin
         </div>
 
-        <nav style={styles.nav}>
-          {items.map((it) => (
-            <Link
-              key={it.href}
-              href={it.href}
-              style={navItem(pathname === it.href)}
-              onMouseOver={(e) => {
-                if (pathname !== it.href) {
-                  e.currentTarget.style.background = "#374151";
-                  e.currentTarget.style.color = "white";
-                }
-              }}
-              onMouseOut={(e) => {
-                if (pathname !== it.href) {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "#D1D5DB";
-                }
-              }}
-            >
-              {it.label}
-            </Link>
-          ))}
+        <nav style={{ display: "grid", gap: 14, marginTop: 10 }}>
+          {items.map((it) => {
+            const active = pathname === it.href || (it.href !== "/admin" && pathname?.startsWith(it.href));
+            return (
+              <Link
+                key={it.href}
+                href={it.href}
+                style={{
+                  textDecoration: "none",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "16px 18px",
+                  borderRadius: 14,
+                  fontWeight: 900,
+                  fontSize: 18,
+                  color: "white",
+                  background: active ? "#DC2626" : "rgba(255,255,255,0.06)",
+                  border: active ? "1px solid rgba(255,255,255,0.18)" : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: active ? "0 10px 24px rgba(220,38,38,0.22)" : "none",
+                }}
+              >
+                <span style={{ width: 22, height: 22, display: "inline-flex" }}>{it.icon}</span>
+                <span>{it.label}</span>
+              </Link>
+            );
+          })}
         </nav>
       </aside>
 
-      <main style={styles.main}>
-        <div style={styles.topBar}>
-          <div>
-            <div style={styles.title}>{title}</div>
-            {subtitle ? <div style={styles.subt}>{subtitle}</div> : null}
-          </div>
+      {/* CONTENT */}
+      <main style={{ background: "#f3f4f6" }}>
+        <div style={{ padding: 24 }}>
+          <div
+            style={{
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 18,
+              padding: "18px 18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 18,
+              position: "relative",
+            }}
+          >
+            <div style={{ fontSize: 26, fontWeight: 900, color: "#111827" }}>{title}</div>
 
-          <div style={{ position: "relative" }} ref={wrapRef}>
-            <button
-              type="button"
-              style={styles.avatarBtn}
-              onClick={() => setOpen((v) => !v)}
-              onMouseOver={(e) => {
-                e.currentTarget.style.transform = "scale(1.05)";
-                e.currentTarget.style.boxShadow = "0 4px 12px rgba(59, 130, 246, 0.4)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.transform = "scale(1)";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-              aria-haspopup="menu"
-              aria-expanded={open}
-              title="Perfil"
-            >
-              {initials}
-            </button>
-
-            {open ? (
-              <div style={styles.menu} role="menu">
-                <div style={styles.menuHeader}>
-                  <div style={styles.menuName}>{me?.nombre?.trim() || "Administrador"}</div>
-                  <div style={styles.menuSub}>{me?.email?.trim() || "admin@petran.cl"}</div>
+            {/* USER DROPDOWN */}
+            <div ref={userRef} style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setOpenUser((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={openUser}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  border: "1px solid #e5e7eb",
+                  background: "#f3f4f6",
+                  borderRadius: 999,
+                  padding: "6px 10px 6px 6px",
+                  cursor: "pointer",
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 999,
+                    border: "1px solid #e5e7eb",
+                    background: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 900,
+                    color: "#111827",
+                  }}
+                >
+                  U
                 </div>
+                <ChevronDownIcon />
+              </button>
 
-                <Link
-                  href="/admin/perfil"
-                  style={styles.menuItem}
-                  onClick={() => setOpen(false)}
-                  onMouseOver={(e) => (e.currentTarget.style.background = "#F9FAFB")}
-                  onMouseOut={(e) => (e.currentTarget.style.background = "white")}
+              {openUser ? (
+                <div
+                  role="menu"
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 58,
+                    width: 240,
+                    background: "white",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    boxShadow: "0 14px 30px rgba(0,0,0,0.12)",
+                    overflow: "hidden",
+                    zIndex: 50,
+                  }}
                 >
-                  Mi Perfil
-                </Link>
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderBottom: "1px solid #e5e7eb",
+                      fontWeight: 900,
+                      color: "#111827",
+                    }}
+                  >
+                    Usuario
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#6b7280" }}>Admin</div>
+                  </div>
 
-                <button
-                  type="button"
-                  style={styles.menuDanger}
-                  onClick={logout}
-                  disabled={loggingOut}
-                  onMouseOver={(e) => !loggingOut && (e.currentTarget.style.background = "#FEF2F2")}
-                  onMouseOut={(e) => !loggingOut && (e.currentTarget.style.background = "white")}
-                >
-                  {loggingOut ? "Cerrando sesión..." : "Cerrar Sesión"}
-                </button>
-              </div>
-            ) : null}
+                  {userMenu.map((m) => (
+                    <button key={m.label} type="button" onClick={m.onClick} style={menuBtn}>
+                      <span style={{ width: 18, height: 18, display: "inline-flex" }}>{m.icon}</span>
+                      {m.label}
+                    </button>
+                  ))}
+
+                  <div style={{ height: 1, background: "#e5e7eb" }} />
+
+                  <button
+                    type="button"
+                    onClick={logout}
+                    style={{ ...menuBtn, color: "#DC2626", fontWeight: 900 }}
+                  >
+                    <span style={{ width: 18, height: 18, display: "inline-flex" }}>
+                      <LogoutIcon />
+                    </span>
+                    Cerrar sesión
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div style={styles.content}>{children}</div>
+          {children}
+        </div>
       </main>
     </div>
+  );
+}
+
+const menuBtn: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "12px 14px",
+  border: "none",
+  background: "white",
+  cursor: "pointer",
+  textAlign: "left",
+  fontWeight: 800,
+  color: "#111827",
+};
+
+/* ===== Icons ===== */
+
+function ChevronDownIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" strokeWidth="2">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 10.5L12 3l9 7.5" />
+      <path d="M5 10v11h14V10" />
+    </svg>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="3" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a3 3 0 0 1 0 5.74" />
+    </svg>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="8" y="2" width="8" height="4" rx="1" />
+      <path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" />
+      <path d="M8 12h8" />
+      <path d="M8 16h8" />
+    </svg>
+  );
+}
+
+function BuildingIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="4" y="2" width="16" height="20" rx="2" />
+      <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
+    </svg>
+  );
+}
+
+/* Dropdown icons */
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
+}
+
+function EditIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
+    </svg>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+      <path d="M5 7l2-4h10l2 4" />
+      <path d="M5 7v12h14V7" />
+    </svg>
+  );
+}
+
+function HelpIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.8-1.7 1.2-1.7 2.7" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10 17l5-5-5-5" />
+      <path d="M15 12H3" />
+      <path d="M21 3v18" />
+    </svg>
   );
 }
