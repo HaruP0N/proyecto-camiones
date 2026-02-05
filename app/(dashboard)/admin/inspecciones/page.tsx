@@ -73,7 +73,7 @@ function toDatetimeLocalValue(d: Date) {
   )}:${pad2(d.getMinutes())}`;
 }
 
-export default function AdminCamionesPage() {
+export default function AdminInspeccionesPage() {
   const router = useRouter();
 
   const [view, setView] = useState<"AGENDAR" | "REALIZADAS">("AGENDAR");

@@ -14,7 +14,7 @@ export default function AdminShell({
   const pathname = usePathname();
   const router = useRouter();
 
-  const INSPECCIONES_HREF = "/admin/camiones";
+  const INSPECCIONES_HREF = "/admin/inspecciones";
 
   const items = [
     { href: "/admin", label: "Inicio", icon: <HomeIcon /> },
