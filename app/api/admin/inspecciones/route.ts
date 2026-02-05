@@ -149,7 +149,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, camiones }, { status: 200 });
   } catch (err) {
-    console.error("GET /api/admin/camiones error:", err);
+    console.error("GET /api/admin/inspecciones error:", err);
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }
