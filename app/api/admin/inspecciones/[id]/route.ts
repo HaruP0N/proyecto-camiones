@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function isValidDatetimeLocal(s: unknown) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
@@ -65,7 +47,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     // Debe existir y ser PROGRAMADA
     const current = await pool
       .request()
-      .input("id", sql.Int, inspeccionId)
+      .input("id", inspeccionId)
       .query(`
         SELECT TOP 1 id, estado
         FROM dbo.inspecciones
@@ -88,7 +70,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (action === "CANCELAR") {
       await pool
         .request()
-        .input("id", sql.Int, inspeccionId)
+        .input("id", inspeccionId)
         .query(`
           UPDATE dbo.inspecciones
           SET estado = 'CANCELADA'
@@ -125,7 +107,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       if (inspectorId !== null) {
         const insp = await pool
           .request()
-          .input("id", sql.Int, inspectorId)
+          .input("id", inspectorId)
           .query(`
             SELECT TOP 1 id
             FROM dbo.usuarios
@@ -145,7 +127,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       // Validación futura
       await pool
         .request()
-        .input("fecha", sql.NVarChar(19), fechaSql)
+        .input("fecha", fechaSql)
         .query(`
           IF (CONVERT(datetime2, @fecha, 120) < DATEADD(minute, 1, SYSDATETIME()))
             THROW 50001, 'La fecha debe ser futura', 1;
@@ -153,10 +135,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
       await pool
         .request()
-        .input("id", sql.Int, inspeccionId)
-        .input("fecha", sql.NVarChar(19), fechaSql)
-        .input("inspectorId", sql.Int, inspectorId as any) // null ok
-        .input("obs", sql.NVarChar(sql.MAX), obs)
+        .input("id", inspeccionId)
+        .input("fecha", fechaSql)
+        .input("inspectorId", inspectorId)
+        .input("obs", obs)
         .query(`
           UPDATE dbo.inspecciones
           SET

@@ -233,9 +233,9 @@ export default function ClienteNuevoPage() {
               <button
                 className="back-link"
                 type="button"
-                onClick={() => router.push("/cliente")}
+                onClick={() => router.push("/")}
               >
-                ← Volver al registro
+                ← Volver al inicio
               </button>
 
               <h2>Crear cuenta</h2>

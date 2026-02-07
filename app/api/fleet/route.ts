@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/azure-sql";
-import mssql from "mssql";
 import { requireCliente } from "@/lib/shared/security/cliente-auth";
 
 export const runtime = "nodejs";
@@ -71,7 +70,7 @@ export async function POST(req: NextRequest) {
     // --- proveedor default por empresa (desde cookie) ---
     const provRes = await pool
       .request()
-      .input("empresa_id", mssql.Int, empresaId)
+      .input("empresa_id", empresaId)
       .query(`
         SELECT TOP 1 id
         FROM proveedores
@@ -84,10 +83,10 @@ export async function POST(req: NextRequest) {
     if (!proveedorId) {
       const createProv = await pool
         .request()
-        .input("empresa_id", mssql.Int, empresaId)
-        .input("nombre", mssql.VarChar(150), "Proveedor (auto)")
-        .input("tipo_transportista", mssql.VarChar(20), "no_licitado")
-        .input("tipo_entidad", mssql.VarChar(20), "empresa")
+        .input("empresa_id", empresaId)
+        .input("nombre", "Proveedor (auto)")
+        .input("tipo_transportista", "no_licitado")
+        .input("tipo_entidad", "empresa")
         .query(`
           INSERT INTO proveedores (empresa_id, nombre, tipo_transportista, tipo_entidad)
           OUTPUT INSERTED.id
@@ -102,8 +101,8 @@ export async function POST(req: NextRequest) {
     for (const t of items) {
       const exists = await pool
         .request()
-        .input("proveedor_id", mssql.Int, proveedorId)
-        .input("patente", mssql.VarChar(15), t.patente)
+        .input("proveedor_id", proveedorId)
+        .input("patente", t.patente)
         .query(`
           SELECT TOP 1 id
           FROM camiones
@@ -117,13 +116,13 @@ export async function POST(req: NextRequest) {
 
       const ins = await pool
         .request()
-        .input("proveedor_id", mssql.Int, proveedorId)
-        .input("patente", mssql.VarChar(15), t.patente)
-        .input("marca", mssql.VarChar(50), t.marca)
-        .input("modelo", mssql.VarChar(50), t.modelo)
-        .input("anio", mssql.Int, t.anio)
-        .input("tipo", mssql.VarChar(20), t.tipo || "camion")
-        .input("carroceria", mssql.VarChar(30), t.carroceria)
+        .input("proveedor_id", proveedorId)
+        .input("patente", t.patente)
+        .input("marca", t.marca)
+        .input("modelo", t.modelo)
+        .input("anio", t.anio)
+        .input("tipo", t.tipo || "camion")
+        .input("carroceria", t.carroceria)
         .query(`
           INSERT INTO camiones (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
           OUTPUT INSERTED.id, INSERTED.patente
@@ -178,8 +177,8 @@ export async function PUT(req: NextRequest) {
     // ✅ verificar pertenencia del camión a la empresa del cliente
     const owns = await pool
       .request()
-      .input("truckId", mssql.Int, truckId)
-      .input("empresaId", mssql.Int, empresaId)
+      .input("truckId", truckId)
+      .input("empresaId", empresaId)
       .query(`
         SELECT TOP 1 c.id
         FROM camiones c
@@ -194,11 +193,11 @@ export async function PUT(req: NextRequest) {
 
     await pool
       .request()
-      .input("id", mssql.Int, truckId)
-      .input("marca", mssql.VarChar(50), marca)
-      .input("modelo", mssql.VarChar(50), modelo)
-      .input("anio", mssql.Int, anio)
-      .input("carroceria", mssql.VarChar(30), carroceria)
+      .input("id", truckId)
+      .input("marca", marca)
+      .input("modelo", modelo)
+      .input("anio", anio)
+      .input("carroceria", carroceria)
       .query(`
         UPDATE camiones
         SET
@@ -230,7 +229,7 @@ export async function GET(req: NextRequest) {
 
     const result = await pool
       .request()
-      .input("empresa_id", mssql.Int, empresaId)
+      .input("empresa_id", empresaId)
       .query(`
         SELECT
           c.id,

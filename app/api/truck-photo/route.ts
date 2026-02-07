@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/azure-sql";
+import { getPool } from "@/lib/azure-sql";
 import { requireCliente } from "@/lib/shared/security/cliente-auth";
 
 export const runtime = "nodejs";
@@ -24,8 +24,8 @@ export async function POST(req: NextRequest) {
     // ✅ validar que el camión pertenezca a la empresa del cliente
     const owns = await pool
       .request()
-      .input("camionId", sql.Int, camionId)
-      .input("empresaId", sql.Int, cliente.empresaId)
+      .input("camionId", camionId)
+      .input("empresaId", cliente.empresaId)
       .query(`
         SELECT TOP 1 c.id
         FROM camiones c
@@ -41,8 +41,8 @@ export async function POST(req: NextRequest) {
     // UPSERT (camion_id UNIQUE)
     await pool
       .request()
-      .input("camion_id", sql.Int, camionId)
-      .input("url", sql.VarChar(500), url)
+      .input("camion_id", camionId)
+      .input("url", url)
       .query(`
         IF EXISTS (SELECT 1 FROM camion_fotos WHERE camion_id = @camion_id)
         BEGIN

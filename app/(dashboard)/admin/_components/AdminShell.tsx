@@ -4,11 +4,54 @@ import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
+// Icon components (replace with your own SVG or icon library as needed)
+function HomeIcon() {
+  return (
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <path d="M3 12l9-9 9 9" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M9 21V13h6v8" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function BuildingIcon() {
+  return (
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <rect x="3" y="7" width="18" height="13" stroke="#111827" strokeWidth="2" rx="2"/>
+      <path d="M9 21V13h6v8" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <rect x="7" y="10" width="3" height="3" stroke="#111827" strokeWidth="1.5" rx="0.5"/>
+      <rect x="14" y="10" width="3" height="3" stroke="#111827" strokeWidth="1.5" rx="0.5"/>
+    </svg>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <rect x="5" y="4" width="14" height="18" rx="2" stroke="#111827" strokeWidth="2"/>
+      <path d="M9 2h6v4H9V2z" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// Add UserIcon definition
+function UserIcon() {
+  return (
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="4" stroke="#111827" strokeWidth="2" />
+      <path d="M4 20c0-4 4-7 8-7s8 3 8 7" stroke="#111827" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Corrige la definición del componente para aceptar subtitle
 export default function AdminShell({
   title,
+  subtitle, // <-- Agregado
   children,
 }: {
   title: string;
+  subtitle?: string; // <-- Agregado
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -18,7 +61,7 @@ export default function AdminShell({
 
   const items = [
     { href: "/admin", label: "Inicio", icon: <HomeIcon /> },
-    { href: "/admin/inspectores", label: "Inspectores", icon: <UsersIcon /> },
+    { href: "/admin/inspectores", label: "Inspectores", icon: <UserIcon /> },
     { href: "/admin/empresas", label: "Empresas", icon: <BuildingIcon /> },
     { href: INSPECCIONES_HREF, label: "Inspecciones", icon: <ClipboardIcon /> },
   ];
@@ -51,8 +94,12 @@ export default function AdminShell({
 
   async function logout() {
     setOpenUser(false);
-    // Para prototipo: Limpiamos y redirigimos a la raíz
-    router.push("/");
+    try {
+      await fetch("/api/admin/logout", { method: "POST" });
+    } catch {
+      // Continuar con la redireccion aunque falle
+    }
+    window.location.href = "/";
   }
 
   const userMenu = [
@@ -121,9 +168,12 @@ export default function AdminShell({
               position: "relative",
             }}
           >
-            <div style={{ fontSize: 26, fontWeight: 900, color: "#111827" }}>{title}</div>
-
-            {/* USER DROPDOWN */}
+            <div>
+              <div style={{ fontSize: 26, fontWeight: 900, color: "#111827" }}>{title}</div>
+              {subtitle && (
+                <div style={{ fontSize: 16, color: "#6b7280", marginTop: 4 }}>{subtitle}</div>
+              )}
+            </div>
             <div ref={userRef} style={{ position: "relative" }}>
               <button
                 type="button"
@@ -211,7 +261,6 @@ export default function AdminShell({
               ) : null}
             </div>
           </div>
-
           {children}
         </div>
       </main>
@@ -219,114 +268,68 @@ export default function AdminShell({
   );
 }
 
-const menuBtn: React.CSSProperties = {
-  width: "100%",
+const menuBtn = {
   display: "flex",
   alignItems: "center",
   gap: 10,
-  padding: "12px 14px",
+  width: "100%",
+  padding: "12px 16px",
+  background: "none",
   border: "none",
-  background: "white",
-  cursor: "pointer",
-  textAlign: "left",
-  fontWeight: 800,
+  fontSize: 16,
+  fontWeight: 700,
   color: "#111827",
+  cursor: "pointer",
+  outline: "none",
+  textAlign: "left" as const,
 };
-
-/* ===== Icons ===== */
 
 function ChevronDownIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#111827" strokeWidth="2">
-      <path d="M6 9l6 6 6-6" />
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <path d="M6 9l6 6 6-6" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
-function HomeIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 10.5L12 3l9 7.5" />
-      <path d="M5 10v11h14V10" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="3" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a3 3 0 0 1 0 5.74" />
-    </svg>
-  );
-}
-
-function ClipboardIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="8" y="2" width="8" height="4" rx="1" />
-      <path d="M9 4H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2" />
-      <path d="M8 12h8" />
-      <path d="M8 16h8" />
-    </svg>
-  );
-}
-
-function BuildingIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
-    </svg>
-  );
-}
-
-function UserIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21a8 8 0 0 1 16 0" />
-    </svg>
-  );
-}
-
-function EditIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-    </svg>
-  );
-}
-
+// Add InboxIcon definition
 function InboxIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M22 12h-6l-2 3h-4l-2-3H2" />
-      <path d="M5 7l2-4h10l2 4" />
-      <path d="M5 7v12h14V7" />
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <rect x="3" y="7" width="18" height="13" rx="2" stroke="#111827" strokeWidth="2"/>
+      <path d="M3 7l9 6 9-6" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
-function HelpIcon() {
+// Add EditIcon definition
+function EditIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.9.8-1.7 1.2-1.7 2.7" />
-      <path d="M12 17h.01" />
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <path d="M15.232 5.232a3 3 0 014.242 4.242l-9.192 9.192a3 3 0 01-1.414.828l-4.242 1.414 1.414-4.242a3 3 0 01.828-1.414l9.192-9.192z" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M16 7l1 1" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   );
 }
 
+// Add LogoutIcon definition
 function LogoutIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10 17l5-5-5-5" />
-      <path d="M15 12H3" />
-      <path d="M21 3v18" />
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <path d="M16 17l5-5-5-5" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M21 12H9" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M12 19a7 7 0 1 1 0-14" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// Add HelpIcon definition
+function HelpIcon() {
+  return (
+    <svg width="22" height="22" fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" stroke="#111827" strokeWidth="2" />
+      <path d="M12 16v-2a4 4 0 1 0-4-4" stroke="#111827" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="12" cy="18" r="1" fill="#111827" />
     </svg>
   );
 }

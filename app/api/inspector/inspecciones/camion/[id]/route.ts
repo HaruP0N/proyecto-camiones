@@ -2,59 +2,67 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/azure-sql";
 import { requireInspector } from "@/lib/shared/security/staff-auth";
 
+export const runtime = "nodejs";
+
 /**
  * GET /api/inspector/inspecciones/camion/[id]
- * Obtiene los datos de un camión específico con su última inspección
- * Solo accesible por inspectores autenticados
+ * Obtiene los datos de un camión con detalles de la empresa
  */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: camionId } = await params;
+    const { id } = await params;
+    const camionId = id;
 
     // Verificar JWT y rol
     const session = requireInspector(req);
     if (!session) {
-      return NextResponse.json(
-        { error: "No autorizado" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+    }
+
+    if (!camionId || isNaN(Number(camionId))) {
+      return NextResponse.json({ ok: false, error: "ID inválido" }, { status: 400 });
     }
 
     const pool = await getPool();
 
-    // Obtener datos del camión con su empresa
-   const camionResult = await pool
-  .request()
-  .input("camion_id", camionId)
-  .query(`
-    SELECT
-      c.id,
-      c.patente,
-      c.marca,
-      c.modelo,
-      c.anio,
-      c.tipo,
-      c.carroceria, -- Cambiar tipo_remolque por carroceria
-      e.nombre as empresa
-    FROM camiones c
-    LEFT JOIN proveedores p ON c.proveedor_id = p.id
-    LEFT JOIN empresas e ON p.empresa_id = e.id
-    WHERE c.id = @camion_id
-  `);
+    // Consulta con JOIN para obtener datos del camión y empresa
+    const result = await pool
+      .request()
+      .input("id", camionId)
+      .query(`
+        SELECT 
+          c.id, 
+          c.patente, 
+          c.marca, 
+          c.modelo, 
+          c.anio, 
+          c.tipo, 
+          c.carroceria,
+          c.created_at,
+          
+          -- Datos de la Empresa
+          e.nombre AS empresa_nombre,
+          e.rut AS empresa_rut,
+          e.direccion AS empresa_direccion,
+          e.telefono_contacto AS empresa_telefono,
+          e.email_contacto AS empresa_email
+          
+        FROM dbo.camiones c
+        LEFT JOIN dbo.proveedores p ON p.id = c.proveedor_id
+        LEFT JOIN dbo.empresas e ON e.id = p.empresa_id
+        WHERE c.id = @id
+      `);
 
-    if (camionResult.recordset.length === 0) {
-      return NextResponse.json(
-        { error: "Camión no encontrado" },
-        { status: 404 }
-      );
+    if (result.recordset.length === 0) {
+      return NextResponse.json({ ok: false, error: "Camión no encontrado" }, { status: 404 });
     }
 
-    const camion = camionResult.recordset[0];
+    const row = result.recordset[0];
 
-    // Obtener última inspección realizada de este camión
+    // Obtener última inspección
     const ultimaInspeccionResult = await pool
       .request()
       .input("camion_id", camionId)
@@ -79,25 +87,27 @@ export async function GET(
         }
       : null;
 
-   return NextResponse.json({
-  success: true,
-  data: {
-    id: camion.id,
-    patente: camion.patente,
-    marca: camion.marca,
-    modelo: camion.modelo,
-    anio: camion.anio,
-    tipo: camion.tipo,
-    carroceria: camion.carroceria, // Se reemplaza tipo_remolque por carroceria
-    empresa: camion.empresa || "Sin empresa",
-    ultimaInspeccion,
-  },
-});
-  } catch (error) {
-    console.error("Error obteniendo camión:", error);
-    return NextResponse.json(
-      { error: "Error al obtener datos del camión" },
-      { status: 500 }
-    );
+    // ✅ Estructura de respuesta con empresa como objeto
+    const data = {
+      id: row.id,
+      patente: row.patente,
+      marca: row.marca,
+      modelo: row.modelo,
+      anio: row.anio,
+      tipo: row.tipo,
+      carroceria: row.carroceria,
+      empresa: {
+        nombre: row.empresa_nombre || "Sin empresa",
+        rut: row.empresa_rut || "Sin RUT",
+        direccion: row.empresa_direccion || "Dirección no registrada",
+        contacto: row.empresa_telefono || row.empresa_email || "Sin contacto",
+      },
+      ultimaInspeccion,
+    };
+
+    return NextResponse.json({ ok: true, success: true, data });
+  } catch (err) {
+    console.error("Error API camion:", err);
+    return NextResponse.json({ ok: false, error: "Error de servidor" }, { status: 500 });
   }
 }

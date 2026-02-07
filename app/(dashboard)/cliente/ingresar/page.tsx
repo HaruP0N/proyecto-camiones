@@ -70,9 +70,9 @@ export default function ClienteIngresarPage() {
               <button
                 className="back-link"
                 type="button"
-                onClick={() => router.push("/cliente")}
+                onClick={() => router.push("/")}
               >
-                ← Volver al registro
+                ← Volver al inicio
               </button>
 
               <h2>Ya estoy registrado</h2>

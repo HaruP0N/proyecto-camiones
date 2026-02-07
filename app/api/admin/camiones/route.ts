@@ -1,24 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function normalizePatente(p: string) {
   return p.trim().toUpperCase().replace(/\s+/g, "");
@@ -45,7 +27,7 @@ export async function GET(req: NextRequest) {
     const where: string[] = [];
 
     if (patente) {
-      request.input("patente", sql.VarChar(20), normalizePatente(patente));
+      request.input("patente", normalizePatente(patente));
       where.push("c.patente = @patente");
     }
 

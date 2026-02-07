@@ -1,4 +1,3 @@
-import sql from 'mssql';
 import { getPool } from '../database/sql/connection';
 import { ICamionRepository } from '../../../domain/repositories/ICamionRepository';
 import { Camion } from '../../../domain/entities/Camion';
@@ -12,7 +11,7 @@ export class SqlCamionRepository implements ICamionRepository {
     if (empresaId) {
       query += ' WHERE empresa_id = @empresaId';
       const request = pool.request();
-      request.input('empresaId', sql.Int, empresaId);
+      request.input('empresaId', empresaId);
       const result = await request.query(query);
       return result.recordset as Camion[];
     }
@@ -24,7 +23,7 @@ export class SqlCamionRepository implements ICamionRepository {
   async findById(id: number): Promise<Camion | null> {
     const pool = await getPool();
     const result = await pool.request()
-      .input('id', sql.Int, id)
+      .input('id', id)
       .query('SELECT * FROM Camiones WHERE id = @id');
     
     return result.recordset[0] || null;
@@ -33,11 +32,11 @@ export class SqlCamionRepository implements ICamionRepository {
   async create(camion: Omit<Camion, 'id'>): Promise<Camion> {
     const pool = await getPool();
     const result = await pool.request()
-      .input('patente', sql.NVarChar, camion.patente)
-      .input('marca', sql.NVarChar, camion.marca)
-      .input('modelo', sql.NVarChar, camion.modelo)
-      .input('anio', sql.Int, camion.anio)
-      .input('empresa_id', sql.Int, camion.empresaId)
+      .input('patente', camion.patente)
+      .input('marca', camion.marca)
+      .input('modelo', camion.modelo)
+      .input('anio', camion.anio)
+      .input('empresa_id', camion.empresaId)
       .query(`
         INSERT INTO Camiones (patente, marca, modelo, anio, empresa_id)
         OUTPUT INSERTED.*

@@ -1,27 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 import bcrypt from "bcryptjs";
 
 export const runtime = "nodejs";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function normalizeEmail(e: string) {
   return e.trim().toLowerCase();
@@ -36,7 +18,7 @@ export async function GET(req: NextRequest) {
 
     const pool = await getPool();
 
-    // ✅ incluir activo (para dashboard) y NO filtrar solo activos
+    // incluir activo (para dashboard) y NO filtrar solo activos
     const r = await pool.request().query(`
       SELECT id, nombre, email, rol, activo
       FROM dbo.usuarios
@@ -55,9 +37,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        // ✅ formato usado por Agenda (dropdown)
+        // formato usado por Agenda (dropdown)
         inspectores: data.map(({ id, nombre, email }) => ({ id, nombre, email })),
-        // ✅ formato dashboard (incluye activo)
+        // formato dashboard (incluye activo)
         data,
       },
       { status: 200 }
@@ -96,7 +78,7 @@ export async function POST(req: NextRequest) {
     const pool = await getPool();
 
     // Evitar duplicado email
-    const exists = await pool.request().input("email", sql.VarChar(200), email).query(`
+    const exists = await pool.request().input("email", email).query(`
       SELECT TOP 1 id
       FROM dbo.usuarios
       WHERE LOWER(LTRIM(RTRIM(email))) = @email
@@ -113,11 +95,11 @@ export async function POST(req: NextRequest) {
 
     const ins = await pool
       .request()
-      .input("nombre", sql.NVarChar(200), nombre)
-      .input("email", sql.VarChar(200), email)
-      .input("password_hash", sql.VarChar(255), hash)
-      .input("rol", sql.VarChar(50), "inspector")
-      .input("activo", sql.Bit, 1)
+      .input("nombre", nombre)
+      .input("email", email)
+      .input("password_hash", hash)
+      .input("rol", "inspector")
+      .input("activo", 1)
       .query(`
         INSERT INTO dbo.usuarios (nombre, email, password_hash, rol, activo)
         OUTPUT INSERTED.id

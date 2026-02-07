@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-import { getPool, sql } from "@/lib/azure-sql";
+import { getPool } from "@/lib/azure-sql";
 import { isValidPin, verifyPin } from "@/lib/shared/utils/pin";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ console.log("NODE_ENV:", process.env.NODE_ENV);
 
     const result = await pool
       .request()
-      .input("rut", sql.VarChar(20), rut)
+      .input("rut", rut)
       .query(`
         SELECT TOP 1 id, pin_hash
         FROM empresas

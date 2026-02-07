@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getPool, sql } from "@/lib/azure-sql"
+import { getPool } from "@/lib/azure-sql"
 
 export async function GET(req: Request) {
   try {
@@ -13,7 +13,7 @@ export async function GET(req: Request) {
     const pool = await getPool()
     const result = await pool
       .request()
-      .input("empresa_id", sql.Int, empresaId)
+      .input("empresa_id", empresaId)
       .query(`
         SELECT c.id, c.patente
         FROM camiones c

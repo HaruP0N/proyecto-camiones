@@ -1,51 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { getPool } from "@/lib/azure-sql";
 
 export const runtime = "nodejs";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    const user = process.env.AZURE_SQL_USER;
-    const password = process.env.AZURE_SQL_PASSWORD;
-    const server = process.env.AZURE_SQL_SERVER;
-    const database = process.env.AZURE_SQL_DATABASE;
-
-    if (!user || !password || !server || !database) {
-      throw new Error(
-        `Missing database config: user=${!!user}, password=${!!password}, server=${!!server}, database=${!!database}`
-      );
-    }
-
-    console.log(`[DB] Connecting to server: ${server}, database: ${database}, user: ${user}`);
-
-    poolPromise = new sql.ConnectionPool({
-      user,
-      password,
-      server,
-      database,
-      options: { 
-        encrypt: true, 
-        trustServerCertificate: false,
-        connectTimeout: 30000,
-      },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect().then(pool => {
-      console.log("[DB] Connection pool created successfully");
-      return pool;
-    }).catch(err => {
-      console.error("[DB] Connection pool error:", err);
-      poolPromise = null;
-      throw err;
-    });
-  }
-  return poolPromise;
-}
 
 function normalizeEmail(e: string) {
   return e.trim().toLowerCase();
@@ -79,7 +37,7 @@ export async function POST(req: NextRequest) {
 
     const r = await pool
       .request()
-      .input("email", sql.VarChar(255), email)
+      .input("email", email)
       .query(`
         SELECT TOP 1
           id,
@@ -104,7 +62,7 @@ export async function POST(req: NextRequest) {
 
     const rol = normalizeRole(u.rol);
 
-    // ✅ SOLO admin / inspector
+    // SOLO admin / inspector
     if (rol !== "admin" && rol !== "inspector") {
       return NextResponse.json({ ok: false, error: "Rol no permitido" }, { status: 403 });
     }

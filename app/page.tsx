@@ -93,7 +93,7 @@ export default function LoginPage() {
                 <h2>¿Quieres contactarnos?</h2>
                 <p>Registrate ahora y coordina tu hora de inspección con nosotros.</p>
 
-                <button className="btn-primary" onClick={() => router.push("/cliente")}>
+                <button className="btn-primary" onClick={() => router.push("/cliente/nuevo")}>
                   REGISTRAR MI CAMIÓN
                 </button>
 

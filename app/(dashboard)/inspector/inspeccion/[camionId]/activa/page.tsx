@@ -58,11 +58,6 @@ const CATEGORIAS_CARROCERIA: Record<string, typeof CATEGORIAS_BASE> = {
   ],
 };
 
-const getCategoriasByTipo = (tipo: string | null) => {
-  const extra = tipo && CATEGORIAS_CARROCERIA[tipo] ? CATEGORIAS_CARROCERIA[tipo] : [];
-  return [...CATEGORIAS_BASE, ...extra];
-};
-
 interface FotoEvidencia {
   id: string;
   url: string;
@@ -357,6 +352,7 @@ export default function InspeccionPage() {
     }
   };
 
+  // 🔴 AQUÍ ESTÁ EL CAMBIO CRÍTICO EN LA FUNCIÓN SUBMIT
   const handleSubmit = async () => {
     const sinResponder = ITEMS.filter((i) => !respuestas[i.id]?.estado);
     if (sinResponder.length > 0) {
@@ -382,18 +378,33 @@ export default function InspeccionPage() {
       nota = Math.max(0, nota);
 
       // Preparar detalles con fotos
-      const detalles = ITEMS.map((item) => ({
-        itemId: item.id,
-        estado: respuestas[item.id]?.estado,
-        descripcionFalla: respuestas[item.id]?.descripcionFalla,
-        motivoNoAplica: respuestas[item.id]?.motivoNoAplica,
-        fotos: respuestas[item.id]?.fotos.map((f) => f.url) || [],
-      }));
+      const detalles = ITEMS.map((item) => {
+        const catObj = CATEGORIAS.find(c => c.secciones.includes(item.seccion));
+        const categoriaNombre = catObj ? catObj.nombre : "General";
 
-      // Recolectar todas las URLs de fotos para guardar
+        return {
+          itemId: item.id,
+          estado: respuestas[item.id]?.estado,
+          descripcionFalla: respuestas[item.id]?.descripcionFalla,
+          motivoNoAplica: respuestas[item.id]?.motivoNoAplica,
+          fotos: respuestas[item.id]?.fotos.map((f) => f.url) || [],
+          categoria: categoriaNombre,
+          nivel: item.nivel,
+          seccion: item.seccion,
+        };
+      });
+
+      // Recolectar todas las URLs de fotos
       const todasLasFotos = ITEMS.flatMap(
         (item) => respuestas[item.id]?.fotos.map((f) => f.url) || []
       );
+
+      // 🔍 Log para depuración
+      console.log("Enviando payload al servidor:", {
+        camionId: Number(camionId),
+        respuestas: detalles,
+        notaFinal: Math.round(nota),
+      });
 
       const response = await fetch(`/api/inspector/inspecciones/${camionId}/completar`, {
         method: "POST",
@@ -403,11 +414,18 @@ export default function InspeccionPage() {
           respuestas: detalles,
           notaFinal: Math.round(nota),
           observacionesGenerales: "",
-          fotos_evidencia: todasLasFotos, // URLs de Cloudinary
+          fotos_evidencia: todasLasFotos,
         }),
       });
 
-      if (!response.ok) throw new Error("Error al guardar");
+      // 🛑 Leemos la respuesta siempre para ver el error real
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        console.error("❌ Error devuelto por el servidor:", data);
+        // Lanzamos el error específico que viene del backend
+        throw new Error(data?.error || "Error desconocido al guardar la inspección");
+      }
 
       toast({
         title: "Inspección completada",
@@ -415,11 +433,11 @@ export default function InspeccionPage() {
       });
 
       router.push(`/inspector/inspeccion/${camionId}/reporte`);
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
+      console.error("Error capturado en handleSubmit:", error);
       toast({
         title: "Error",
-        description: "No se pudo guardar la inspección",
+        description: error.message || "No se pudo guardar la inspección",
         variant: "destructive",
       });
     } finally {

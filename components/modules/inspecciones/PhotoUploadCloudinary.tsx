@@ -238,7 +238,7 @@ export function PhotoUploadCloudinary({
         </div>
       )}
 
-      {/* Action Buttons */}
+      {/* Action Buttons — min-h-[48px] para touch targets */}
       {canAddMore && (
         <div className="flex gap-2">
           <Button
@@ -247,20 +247,20 @@ export function PhotoUploadCloudinary({
             size="sm"
             disabled={isUploading}
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1"
+            className="flex-1 min-h-[48px]"
           >
             <ImageIcon className="h-4 w-4 mr-2" />
-            Galería
+            Galeria
           </Button>
           <Button
             type="button"
             size="sm"
             disabled={isUploading}
             onClick={() => cameraInputRef.current?.click()}
-            className="flex-1 bg-teal-600 hover:bg-teal-700"
+            className="flex-1 bg-teal-600 hover:bg-teal-700 active:bg-teal-800 min-h-[48px]"
           >
             <Camera className="h-4 w-4 mr-2" />
-            Cámara
+            Camara
           </Button>
         </div>
       )}
@@ -290,11 +290,11 @@ export function PhotoUploadCloudinary({
                 className="w-full h-full object-cover"
               />
 
-              {/* Remove Button */}
+              {/* Remove Button — visible en mobile (no depende de hover) */}
               <button
                 type="button"
                 onClick={() => handleRemove(foto.id)}
-                className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                className="absolute top-1 right-1 w-7 h-7 bg-red-500 hover:bg-red-600 active:bg-red-700 text-white rounded-full flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-lg"
               >
                 <X className="h-4 w-4" />
               </button>

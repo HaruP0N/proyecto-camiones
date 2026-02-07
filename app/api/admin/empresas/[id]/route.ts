@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function parseId(req: NextRequest) {
   const last = req.nextUrl.pathname.split("/").filter(Boolean).pop() || "";
@@ -67,7 +49,7 @@ export async function PATCH(req: NextRequest) {
 
     const pool = await getPool();
 
-    const exists = await pool.request().input("id", sql.Int, empresaId).query(`
+    const exists = await pool.request().input("id", empresaId).query(`
       SELECT TOP 1 id
       FROM dbo.empresas
       WHERE id=@id
@@ -78,27 +60,27 @@ export async function PATCH(req: NextRequest) {
     }
 
     const sets: string[] = [];
-    const request = pool.request().input("id", sql.Int, empresaId);
+    const request = pool.request().input("id", empresaId);
 
     if (nombre !== undefined) {
       sets.push("nombre=@nombre");
-      request.input("nombre", sql.NVarChar(200), nombre);
+      request.input("nombre", nombre);
     }
     if (rut !== undefined) {
       sets.push("rut=@rut");
-      request.input("rut", sql.VarChar(50), rut);
+      request.input("rut", rut);
     }
     if (rubro !== undefined) {
       sets.push("rubro=@rubro");
-      request.input("rubro", sql.NVarChar(120), rubro);
+      request.input("rubro", rubro);
     }
     if (email_contacto !== undefined) {
       sets.push("email_contacto=@email_contacto");
-      request.input("email_contacto", sql.VarChar(200), email_contacto);
+      request.input("email_contacto", email_contacto);
     }
     if (telefono_contacto !== undefined) {
       sets.push("telefono_contacto=@telefono_contacto");
-      request.input("telefono_contacto", sql.VarChar(50), telefono_contacto);
+      request.input("telefono_contacto", telefono_contacto);
     }
 
     await request.query(`

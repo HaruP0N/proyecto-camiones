@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool, sql } from "@/lib/azure-sql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -40,15 +40,13 @@ export async function GET(req: NextRequest) {
 
     const pool = await getPool();
 
-    // ✅ Evitamos new Date(...) para no depender del parseo de Node
-    // ✅ Convertimos en SQL con estilo 120: "YYYY-MM-DD HH:mm:ss"
     const camionesTotalQ = pool.request().query(`SELECT COUNT(1) AS n FROM dbo.camiones`);
     const empresasTotalQ = pool.request().query(`SELECT COUNT(1) AS n FROM dbo.empresas`);
 
     const hoyQ = pool
       .request()
-      .input("todayStart", sql.NVarChar(19), todayStart)
-      .input("todayEnd", sql.NVarChar(19), todayEnd)
+      .input("todayStart", todayStart)
+      .input("todayEnd", todayEnd)
       .query(`
         SELECT COUNT(1) AS n
         FROM dbo.inspecciones
@@ -59,8 +57,8 @@ export async function GET(req: NextRequest) {
 
     const semanaQ = pool
       .request()
-      .input("weekStart", sql.NVarChar(19), weekStart)
-      .input("weekEnd", sql.NVarChar(19), weekEnd)
+      .input("weekStart", weekStart)
+      .input("weekEnd", weekEnd)
       .query(`
         SELECT COUNT(1) AS n
         FROM dbo.inspecciones
@@ -71,7 +69,7 @@ export async function GET(req: NextRequest) {
 
     const vencidasQ = pool
       .request()
-      .input("nowLocal", sql.NVarChar(19), nowLocal)
+      .input("nowLocal", nowLocal)
       .query(`
         SELECT COUNT(1) AS n
         FROM dbo.inspecciones

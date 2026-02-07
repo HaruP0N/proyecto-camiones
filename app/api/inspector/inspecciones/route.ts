@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
 import { getPool } from "@/lib/azure-sql";
 import { requireInspector } from "@/lib/shared/security/staff-auth";
 import type { InspeccionState, NotaResultado } from "@/lib/inspection/types";
@@ -53,7 +52,7 @@ export async function POST(req: NextRequest) {
       // Verificar que existe
       const check = await pool
         .request()
-        .input("id", sql.Int, inspeccionId)
+        .input("id", inspeccionId)
         .query(`
           SELECT TOP 1 id, camion_id
           FROM dbo.inspecciones
@@ -64,12 +63,12 @@ export async function POST(req: NextRequest) {
         // Actualizar con resultados
         await pool
           .request()
-          .input("id", sql.Int, inspeccionId)
-          .input("estado", sql.VarChar(50), estadoInspeccion || "COMPLETADA")
-          .input("resultado", sql.VarChar(50), resultado || "APROBADO")
-          .input("nota", sql.Int, nota)
-          .input("inspector_id", sql.Int, session.userId)
-          .input("fecha_inspeccion", sql.DateTime2, new Date().toISOString())
+          .input("id", inspeccionId)
+          .input("estado", estadoInspeccion || "COMPLETADA")
+          .input("resultado", resultado || "APROBADO")
+          .input("nota", nota)
+          .input("inspector_id", session.userId)
+          .input("fecha_inspeccion", new Date().toISOString())
           .query(`
             UPDATE dbo.inspecciones
             SET
@@ -92,12 +91,12 @@ export async function POST(req: NextRequest) {
       // Insertar detalle
       const detalleRes = await pool
         .request()
-        .input("inspeccion_id", sql.Int, inspeccionId || null)
-        .input("camion_id", sql.Int, camionId)
-        .input("item_id", sql.VarChar(50), itemId)
-        .input("estado", sql.VarChar(50), estado)
-        .input("descripcion", sql.NVarChar(sql.MAX), descripcionFalla || null)
-        .input("motivo_no_aplica", sql.NVarChar(500), motivoNoAplica || null)
+        .input("inspeccion_id", inspeccionId || null)
+        .input("camion_id", camionId)
+        .input("item_id", itemId)
+        .input("estado", estado)
+        .input("descripcion", descripcionFalla || null)
+        .input("motivo_no_aplica", motivoNoAplica || null)
         .query(`
           INSERT INTO dbo.detalle_inspeccion
             (inspeccion_id, camion_id, item_id, estado, descripcion_falla, motivo_no_aplica)
@@ -114,11 +113,11 @@ export async function POST(req: NextRequest) {
           if (foto.base64 && foto.nombreArchivo) {
             await pool
               .request()
-              .input("detalle_id", sql.Int, detalleId)
-              .input("nombre_archivo", sql.NVarChar(255), foto.nombreArchivo)
-              .input("datos_binarios", sql.VarBinary(sql.MAX), Buffer.from(foto.base64, "base64"))
-              .input("tipo_mime", sql.VarChar(100), foto.tipoMime || "image/jpeg")
-              .input("fecha_captura", sql.DateTime2, foto.fechaCaptura || new Date().toISOString())
+              .input("detalle_id", detalleId)
+              .input("nombre_archivo", foto.nombreArchivo)
+              .input("datos_binarios", Buffer.from(foto.base64, "base64"))
+              .input("tipo_mime", foto.tipoMime || "image/jpeg")
+              .input("fecha_captura", foto.fechaCaptura || new Date().toISOString())
               .query(`
                 INSERT INTO dbo.fotos_inspeccion
                   (detalle_inspeccion_id, nombre_archivo, datos_binarios, tipo_mime, fecha_captura)
@@ -156,30 +155,25 @@ export async function GET(req: NextRequest) {
     }
 
     const pool = await getPool();
+    const inspectorId = session.userId;
 
-    const r = await pool
+    // Trae todas las inspecciones del día para el inspector
+    const res = await pool
       .request()
-      .input("inspector_id", sql.Int, session.userId)
+      .input("inspectorId", inspectorId)
       .query(`
-        SELECT
-          i.id,
-          i.camion_id,
-          c.patente,
-          i.estado,
-          i.resultado_general,
-          i.nota_final,
-          CONVERT(varchar(16), i.fecha_programada, 126) AS fecha_programada,
-          CONVERT(varchar(16), i.fecha_inspeccion, 126) AS fecha_inspeccion
+        SELECT i.id, i.camion_id, c.patente, i.estado, i.fecha_programada
         FROM dbo.inspecciones i
-        JOIN dbo.camiones c ON c.id = i.camion_id
-        WHERE i.inspector_id = @inspector_id
+        INNER JOIN dbo.camiones c ON c.id = i.camion_id
+        WHERE i.inspector_id = @inspectorId
+          AND CAST(i.fecha_programada AS DATE) = CAST(GETDATE() AS DATE)
         ORDER BY i.fecha_programada DESC
       `);
 
     return NextResponse.json(
       {
         ok: true,
-        inspecciones: r.recordset.map((x: any) => ({
+        inspecciones: res.recordset.map((x: any) => ({
           id: Number(x.id),
           camionId: Number(x.camion_id),
           patente: x.patente,

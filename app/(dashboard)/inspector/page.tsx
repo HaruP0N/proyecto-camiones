@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import {
   Truck,
   Search,
@@ -11,86 +11,104 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
-  Filter,
-  Plus,
-  Calendar,
   X,
+  MapPin,
+  Calendar,
+  Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils-cn";
 
-interface Camion {
-  id: number;
+// Tipos adaptados a tu API real
+interface CamionDashboard {
+  id: number;        // ID de la inspección
+  camionId: number;  // ID DEL CAMIÓN (Importante para la ruta)
   patente: string;
   marca: string;
   modelo: string;
   anio: number;
-  tipo: string;
   empresa: string;
-  estado?: "disponible" | "en_inspeccion" | "programado";
-  ultimaInspeccion?: string;
-  proximaInspeccion?: string;
+  estado: "disponible" | "en_inspeccion" | "programado" | "finalizado";
+  fechaProgramada: string;
+  resultado?: string | null;
 }
 
-interface Inspector {
+interface InspectorProfile {
   id: string;
   nombre: string;
   email: string;
 }
 
-type FilterType = "all" | "available" | "scheduled" | "inspecting";
+type FilterType = "all" | "pending" | "completed";
 
-export default function InspectorFleetPage() {
+export default function InspectorDashboardPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const [camiones, setCamiones] = useState<Camion[]>([]);
-  const [filteredCamiones, setFilteredCamiones] = useState<Camion[]>([]);
+  const [items, setItems] = useState<CamionDashboard[]>([]);
+  const [filteredItems, setFilteredItems] = useState<CamionDashboard[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<FilterType>("all");
-  const [inspector, setInspector] = useState<Inspector | null>(null);
+  const [inspector, setInspector] = useState<InspectorProfile | null>(null);
 
   useEffect(() => {
     fetchData();
   }, []);
 
   useEffect(() => {
-    filterCamiones();
-  }, [searchQuery, activeFilter, camiones]);
+    filterItems();
+  }, [searchQuery, activeFilter, items]);
 
   async function fetchData() {
     try {
-      // Obtener datos del inspector
-      const meRes = await fetch("/api/inspector/me");
-      if (meRes.ok) {
-        const meData = await meRes.json();
-        setInspector(meData.data);
-      }
+      setLoading(true);
+      
+      // 1. Obtener datos del inspector
+      fetch("/api/inspector/me")
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+            if (data) setInspector(data);
+        })
+        .catch(() => console.log("No session info"));
 
-      // Obtener camiones disponibles para inspección
+      // 2. Obtener inspecciones de HOY
       const res = await fetch("/api/inspector/inspecciones/hoy");
-      if (!res.ok) throw new Error("Error al cargar datos");
+      if (!res.ok) throw new Error("Error al cargar agenda");
 
-      const data = await res.json();
-      const camionesData = (data.data || []).map((insp: any) => ({
-        id: insp.camion_id,
-        patente: insp.patente,
-        marca: insp.marca,
-        modelo: insp.modelo,
-        anio: insp.anio || 2020,
-        tipo: insp.tipo || "Camión",
-        empresa: insp.empresa,
-        estado: insp.estado === "PROGRAMADA" ? "programado" :
-                insp.estado === "EN_PROGRESO" ? "en_inspeccion" : "disponible",
-        proximaInspeccion: insp.fecha_programada,
-      }));
+      const payload = await res.json();
+      const rawData = Array.isArray(payload.data) ? payload.data : [];
 
-      setCamiones(camionesData);
+      // Mapear datos
+      const dashboardData: CamionDashboard[] = rawData.map((insp: any) => {
+        let estado: CamionDashboard["estado"] = "programado";
+        
+        // Lógica de estados
+        if (insp.resultado_general && insp.resultado_general !== "PENDIENTE") {
+            estado = "finalizado";
+        } else if (insp.estado === "EN_PROGRESO") {
+            estado = "en_inspeccion";
+        }
+
+        return {
+          id: insp.id,
+          camionId: insp.camion_id, // ✅ Guardamos el ID del camión para la ruta
+          patente: insp.patente || "S/P",
+          marca: insp.marca || "Camión",
+          modelo: insp.modelo || "Genérico",
+          anio: insp.anio || new Date().getFullYear(),
+          empresa: insp.empresa_nombre || "Empresa Cliente",
+          estado,
+          fechaProgramada: insp.fecha_programada,
+          resultado: insp.resultado_general
+        };
+      });
+
+      setItems(dashboardData);
     } catch (error) {
       console.error("Error:", error);
       toast({
-        title: "Error",
-        description: "No se pudieron cargar los datos",
+        title: "Error de conexión",
+        description: "No pudimos cargar tu agenda de hoy.",
         variant: "destructive",
       });
     } finally {
@@ -98,237 +116,211 @@ export default function InspectorFleetPage() {
     }
   }
 
-  function filterCamiones() {
-    let filtered = [...camiones];
+  function filterItems() {
+    let filtered = [...items];
 
-    // Filtro por búsqueda
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(
         (c) =>
-          c.patente.toLowerCase().includes(query) ||
-          c.marca.toLowerCase().includes(query) ||
-          c.modelo.toLowerCase().includes(query) ||
-          c.empresa.toLowerCase().includes(query)
+          c.patente.toLowerCase().includes(q) ||
+          c.marca.toLowerCase().includes(q) ||
+          c.modelo.toLowerCase().includes(q) ||
+          c.empresa.toLowerCase().includes(q)
       );
     }
 
-    // Filtro por estado
-    if (activeFilter !== "all") {
-      const estadoMap: Record<FilterType, string> = {
-        all: "",
-        available: "disponible",
-        scheduled: "programado",
-        inspecting: "en_inspeccion",
-      };
-      filtered = filtered.filter((c) => c.estado === estadoMap[activeFilter]);
+    if (activeFilter === "pending") {
+        filtered = filtered.filter(c => c.estado === "programado" || c.estado === "en_inspeccion");
+    } else if (activeFilter === "completed") {
+        filtered = filtered.filter(c => c.estado === "finalizado");
     }
 
-    setFilteredCamiones(filtered);
+    setFilteredItems(filtered);
   }
 
-  // Ir a la pantalla de pre-inspección
-  const handleSelectTruck = (camion: Camion) => {
-    router.push(`/inspector/inspeccion/${camion.id}`);
+  // ✅ CORRECCIÓN DE RUTAS DE NAVEGACIÓN
+  const handleCardClick = (item: CamionDashboard) => {
+    if (item.estado === "finalizado") {
+        // Si está finalizada, ir al reporte o historial
+        // Ruta sugerida: ver reporte de ese camión
+        router.push(`/inspector/inspeccion/${item.camionId}/reporte`);
+    } else if (item.estado === "en_inspeccion") {
+        // Si ya está iniciada ("en_inspeccion"), ir directo a la activa
+        router.push(`/inspector/inspeccion/${item.camionId}/activa`);
+    } else {
+        // Si está pendiente ("programado"), ir a la pre-inspección
+        router.push(`/inspector/inspeccion/${item.camionId}`);
+    }
   };
 
-  const getEstadoBadge = (estado?: string) => {
-    switch (estado) {
-      case "disponible":
+  const getEstadoBadge = (estado: string, resultado?: string | null) => {
+    if (estado === "finalizado") {
+        const colorClass = resultado === "APROBADO" ? "bg-green-100 text-green-700 border-green-200" 
+                         : resultado === "RECHAZADO" ? "bg-red-100 text-red-700 border-red-200"
+                         : "bg-gray-100 text-gray-700 border-gray-200";
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-green-100 text-green-700 border border-green-200">
-            <CheckCircle className="h-4 w-4" />
-            Disponible
-          </span>
+            <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border", colorClass)}>
+              <CheckCircle className="h-3 w-3" /> {resultado || "Finalizado"}
+            </span>
         );
-      case "programado":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-300">
-            <Calendar className="h-4 w-4" />
-            Programado
-          </span>
-        );
-      case "en_inspeccion":
-        return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">
-            <AlertTriangle className="h-4 w-4" />
-            En curso
-          </span>
-        );
-      default:
-        return null;
     }
+    if (estado === "en_inspeccion") {
+        return (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-700 border border-blue-200">
+              <AlertTriangle className="h-3 w-3" /> En Progreso
+            </span>
+        );
+    }
+    return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-yellow-100 text-yellow-800 border border-yellow-200">
+          <Clock className="h-3 w-3" /> Pendiente
+        </span>
+    );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-center space-y-4">
-          <Spinner className="h-10 w-10 mx-auto text-red-600" />
-          <p className="text-neutral-500">Cargando flota...</p>
-        </div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
+        <Spinner className="h-10 w-10 text-slate-900" />
+        <p className="text-slate-500 animate-pulse">Sincronizando agenda...</p>
       </div>
     );
   }
 
   const stats = {
-    total: camiones.length,
-    disponibles: camiones.filter((c) => c.estado === "disponible").length,
-    programados: camiones.filter((c) => c.estado === "programado").length,
+    all: items.length,
+    pending: items.filter(i => i.estado === "programado" || i.estado === "en_inspeccion").length,
+    completed: items.filter(i => i.estado === "finalizado").length
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header Sticky Simplificado y Posicionado Correctamente */}
-      <header className="bg-neutral-900 border-b border-neutral-800 sticky top-16 z-40">
-        <div className="px-4 py-4">
-           <h1 className="text-xl font-bold text-white mb-1">Tu Flota</h1>
-           <p className="text-sm text-neutral-400">
-            Bienvenido, {inspector?.nombre || "Inspector"}. Selecciona para comenzar.
-           </p>
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header Sticky */}
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
+           <div>
+               <h1 className="text-xl font-bold text-slate-900">Agenda de Hoy</h1>
+               <p className="text-xs text-slate-500 font-medium">
+                  {new Date().toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' })}
+               </p>
+           </div>
+           <div className="h-10 w-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold shadow-sm">
+              {inspector?.nombre ? inspector.nombre.charAt(0).toUpperCase() : "I"}
+           </div>
         </div>
       </header>
 
-      {/* Content */}
-      <div className="px-4 py-6">
+      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         
-        {/* Search Bar */}
-        <div className="relative mb-4">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-neutral-400" />
+        {/* Buscador */}
+        <div className="relative group">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search className="h-5 w-5 text-slate-400 group-focus-within:text-slate-600 transition-colors" />
+          </div>
           <input
             type="text"
-            placeholder="Buscar por patente, marca..."
+            placeholder="Buscar patente, empresa..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-4 bg-neutral-100 border border-neutral-200 rounded-2xl text-base text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            className="block w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent shadow-sm transition-all"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-1 hover:bg-neutral-200 rounded-full"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600"
             >
-              <X className="h-4 w-4 text-neutral-500" />
+              <X className="h-4 w-4" />
             </button>
           )}
         </div>
 
-        {/* Section Title con filtro más visible */}
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-neutral-600 uppercase tracking-wide">
-            Vehículos Asignados
-          </h2>
-          <button className="p-2.5 hover:bg-neutral-100 rounded-xl transition-colors border border-neutral-200">
-            <Filter className="h-5 w-5 text-neutral-600" />
-          </button>
+        {/* Filtros Tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+           <button
+             onClick={() => setActiveFilter("all")}
+             className={cn("px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2", 
+                activeFilter === "all" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200")}
+           >
+             Todos <span className={cn("px-1.5 py-0.5 rounded text-[10px]", activeFilter === "all" ? "bg-slate-700 text-white" : "bg-slate-200 text-slate-600")}>{stats.all}</span>
+           </button>
+           <button
+             onClick={() => setActiveFilter("pending")}
+             className={cn("px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2", 
+                activeFilter === "pending" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200")}
+           >
+             Pendientes <span className={cn("px-1.5 py-0.5 rounded text-[10px]", activeFilter === "pending" ? "bg-slate-700 text-white" : "bg-slate-200 text-slate-600")}>{stats.pending}</span>
+           </button>
+           <button
+             onClick={() => setActiveFilter("completed")}
+             className={cn("px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2", 
+                activeFilter === "completed" ? "bg-slate-900 text-white shadow-md" : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200")}
+           >
+             Finalizados <span className={cn("px-1.5 py-0.5 rounded text-[10px]", activeFilter === "completed" ? "bg-slate-700 text-white" : "bg-slate-200 text-slate-600")}>{stats.completed}</span>
+           </button>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex gap-2 mb-4 overflow-x-auto pb-2 -mx-4 px-4">
-          {[
-            { key: "all", label: "Todos", count: stats.total },
-            { key: "scheduled", label: "Programados", count: stats.programados },
-            { key: "available", label: "Disponibles", count: stats.disponibles },
-          ].map((filter) => (
-            <button
-              key={filter.key}
-              onClick={() => setActiveFilter(filter.key as FilterType)}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all",
-                activeFilter === filter.key
-                  ? "bg-red-600 text-white"
-                  : "bg-white border border-neutral-300 text-neutral-700 hover:border-neutral-400"
-              )}
-            >
-              {filter.label}
-              <span
-                className={cn(
-                  "text-xs px-1.5 py-0.5 rounded-full",
-                  activeFilter === filter.key
-                    ? "bg-red-500 text-white"
-                    : "bg-neutral-100 text-neutral-600"
-                )}
-              >
-                {filter.count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Truck List */}
-        <div className="space-y-3 pb-24">
-          {filteredCamiones.length === 0 ? (
-            <div className="bg-neutral-50 rounded-2xl p-8 text-center border border-neutral-200">
-              <Truck className="h-12 w-12 text-neutral-300 mx-auto mb-4" />
-              <p className="text-neutral-900 font-semibold mb-1">
-                No se encontraron vehículos
-              </p>
-              <p className="text-neutral-500 text-sm">
-                {searchQuery
-                  ? "Intenta con otra búsqueda"
-                  : "No hay vehículos asignados"}
-              </p>
+        {/* Lista de Tarjetas */}
+        <div className="space-y-4">
+          {filteredItems.length === 0 ? (
+            <div className="text-center py-12">
+               <div className="bg-white h-20 w-20 rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100">
+                  <Truck className="h-10 w-10 text-slate-300" />
+               </div>
+               <h3 className="text-slate-900 font-bold text-lg">Sin resultados</h3>
+               <p className="text-slate-500 text-sm">No hay inspecciones que coincidan con tu búsqueda.</p>
             </div>
           ) : (
-            filteredCamiones.map((camion) => (
+            filteredItems.map((item) => (
               <div
-                key={camion.id}
-                onClick={() => handleSelectTruck(camion)}
-                className="bg-white rounded-2xl p-4 border border-neutral-200 hover:border-red-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99]"
+                key={item.id}
+                onClick={() => handleCardClick(item)} // ✅ Se llama a la función corregida
+                className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group active:scale-[0.99]"
               >
-                <div className="flex items-center gap-4">
-                  {/* Truck Icon */}
-                  <div className="w-14 h-14 bg-neutral-900 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Truck className="h-7 w-7 text-red-500" />
+                <div className="flex items-start gap-4">
+                  <div className={cn("w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors", 
+                      item.estado === "finalizado" ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-600 group-hover:bg-slate-900 group-hover:text-white")}>
+                     <Truck className="h-6 w-6" />
                   </div>
 
-                  {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold text-neutral-900 truncate">
-                        {camion.patente}
-                      </h3>
-                      {getEstadoBadge(camion.estado)}
-                    </div>
-                    <p className="text-sm text-neutral-600 truncate">
-                      {camion.marca} {camion.modelo}
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-neutral-400">
-                      <span>Año: {camion.anio}</span>
-                      <span>•</span>
-                      <span className="truncate">{camion.empresa}</span>
-                    </div>
-                    {camion.estado === "programado" && camion.proximaInspeccion && (
-                      <div className="flex items-center gap-1 mt-1 text-xs text-yellow-600">
-                        <Calendar className="h-3 w-3" />
-                        <span>
-                          {new Date(camion.proximaInspeccion).toLocaleDateString("es-CL", {
-                            day: "numeric",
-                            month: "short",
-                          })}
+                     <div className="flex justify-between items-start">
+                        <div>
+                           <h3 className="font-bold text-slate-900 text-lg leading-tight">{item.patente}</h3>
+                           <p className="text-sm text-slate-500 font-medium truncate">{item.marca} {item.modelo}</p>
+                        </div>
+                        {getEstadoBadge(item.estado, item.resultado)}
+                     </div>
+                     
+                     <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                           <Calendar className="h-3.5 w-3.5" /> {new Date(item.fechaProgramada).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </span>
-                      </div>
-                    )}
+                        <span className="flex items-center gap-1 truncate max-w-[150px]">
+                           <MapPin className="h-3.5 w-3.5" /> {item.empresa}
+                        </span>
+                     </div>
                   </div>
-
-                  {/* Arrow */}
-                  <ChevronRight className="h-5 w-5 text-neutral-400 flex-shrink-0" />
+                  
+                  <div className="self-center pl-2">
+                     <ChevronRight className="h-5 w-5 text-slate-300 group-hover:text-slate-900" />
+                  </div>
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
+      
+      {/* FAB: Botón flotante para iniciar escaneo rápido (opcional) */}
+      <button
+         onClick={() => router.push('/inspector/scanner')} // Si tienes ruta de escáner QR
+         className="fixed bottom-6 right-6 w-14 h-14 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-lg shadow-red-600/40 flex items-center justify-center transition-all active:scale-95 z-30"
+         aria-label="Escanear Patente"
+      >
+         <Plus className="h-6 w-6" />
+      </button>
 
-      {/* FAB - Floating Action Button */}
-      {filteredCamiones.length > 0 && (
-        <button
-          onClick={() => handleSelectTruck(filteredCamiones[0])}
-          className="fixed bottom-24 right-4 w-14 h-14 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-lg shadow-red-600/40 flex items-center justify-center transition-all active:scale-95 z-30"
-          aria-label="Iniciar nueva inspección"
-        >
-          <Plus className="h-6 w-6" />
-        </button>
-      )}
     </div>
   );
 }

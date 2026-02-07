@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getPool, sql } from "@/lib/azure-sql"
+import { getPool } from "@/lib/azure-sql"
 import { hashPin, isValidPin } from "@/lib/shared/utils/pin"
 
 export async function POST(request: NextRequest) {
@@ -37,19 +37,19 @@ export async function POST(request: NextRequest) {
 
     const result = await pool
       .request()
-      .input("nombre", sql.VarChar(150), nombre)
-      .input("rut", sql.VarChar(20), rut)
-      .input("rubro", sql.VarChar(100), rubro || null)
-      .input("productos_transportados", sql.VarChar(sql.MAX), productos_transportados || null)
-      .input("telefono_contacto", sql.VarChar(20), telefono_contacto || null)
-      .input("email_contacto", sql.VarChar(150), email_contacto || null)
-      .input("direccion", sql.VarChar(300), direccion || null)
-      .input("prioridad_frio", sql.Bit, prioridad_frio ? 1 : 0)
-      .input("prioridad_carroceria", sql.Bit, prioridad_carroceria ? 1 : 0)
-      .input("prioridad_estructura", sql.Bit, prioridad_estructura ? 1 : 0)
-      .input("prioridad_camion", sql.Bit, prioridad_camion ? 1 : 0)
-      .input("prioridad_acople", sql.Bit, prioridad_acople ? 1 : 0)
-      .input("pin_hash", sql.VarChar(255), pin_hash)
+      .input("nombre", nombre)
+      .input("rut", rut)
+      .input("rubro", rubro || null)
+      .input("productos_transportados", productos_transportados || null)
+      .input("telefono_contacto", telefono_contacto || null)
+      .input("email_contacto", email_contacto || null)
+      .input("direccion", direccion || null)
+      .input("prioridad_frio", prioridad_frio ? 1 : 0)
+      .input("prioridad_carroceria", prioridad_carroceria ? 1 : 0)
+      .input("prioridad_estructura", prioridad_estructura ? 1 : 0)
+      .input("prioridad_camion", prioridad_camion ? 1 : 0)
+      .input("prioridad_acople", prioridad_acople ? 1 : 0)
+      .input("pin_hash", pin_hash)
       .query(`
         INSERT INTO empresas (
           nombre, rut, rubro, productos_transportados, 
@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
     if (rut) {
       const result = await pool
         .request()
-        .input("rut", sql.VarChar(20), rut)
+        .input("rut", rut)
         .query(`
           SELECT TOP 1 id, nombre, rut
           FROM empresas

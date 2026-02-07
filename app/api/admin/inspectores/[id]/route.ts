@@ -1,26 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
+import { getPool } from "@/lib/azure-sql";
 
 export const runtime = "nodejs";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function parseId(req: NextRequest) {
   const last = req.nextUrl.pathname.split("/").filter(Boolean).pop() || "";
@@ -60,7 +42,7 @@ export async function PATCH(req: NextRequest) {
 
     const pool = await getPool();
 
-    const ok = await pool.request().input("id", sql.Int, id).query(`
+    const ok = await pool.request().input("id", id).query(`
       SELECT TOP 1 id
       FROM dbo.usuarios
       WHERE id=@id AND LOWER(LTRIM(RTRIM(rol)))='inspector'
@@ -72,8 +54,8 @@ export async function PATCH(req: NextRequest) {
     if (email !== undefined) {
       const dup = await pool
         .request()
-        .input("email", sql.VarChar(200), email)
-        .input("id", sql.Int, id)
+        .input("email", email)
+        .input("id", id)
         .query(`
           SELECT TOP 1 id
           FROM dbo.usuarios
@@ -89,19 +71,19 @@ export async function PATCH(req: NextRequest) {
     }
 
     const sets: string[] = [];
-    const request = pool.request().input("id", sql.Int, id);
+    const request = pool.request().input("id", id);
 
     if (nombre !== undefined) {
       sets.push("nombre=@nombre");
-      request.input("nombre", sql.NVarChar(200), nombre);
+      request.input("nombre", nombre);
     }
     if (email !== undefined) {
       sets.push("email=@email");
-      request.input("email", sql.VarChar(200), email);
+      request.input("email", email);
     }
     if (activo !== undefined) {
       sets.push("activo=@activo");
-      request.input("activo", sql.Bit, activo ? 1 : 0);
+      request.input("activo", activo ? 1 : 0);
     }
 
     await request.query(`

@@ -12,3 +12,10 @@ export default function FlotaPage() {
     </main>
   )
 }
+
+// Route: GET  /cliente/flota
+// APIs usados típicamente:
+//  - GET /api/fleet?empresaId=...
+//  - POST /api/fleet (crear)
+//  - PUT  /api/fleet/:id (actualizar)
+// Nota: revisar FleetForm dentro de este archivo para llamadas exactas.

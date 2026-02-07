@@ -1,24 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
+import { getPool } from "@/lib/azure-sql";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
-
-let poolPromise: Promise<sql.ConnectionPool> | null = null;
-
-function getPool() {
-  if (!poolPromise) {
-    poolPromise = new sql.ConnectionPool({
-      user: process.env.AZURE_SQL_USER,
-      password: process.env.AZURE_SQL_PASSWORD,
-      server: process.env.AZURE_SQL_SERVER!,
-      database: process.env.AZURE_SQL_DATABASE!,
-      options: { encrypt: true, trustServerCertificate: false },
-      connectionTimeout: 30000,
-      requestTimeout: 30000,
-      pool: { max: 10, min: 0, idleTimeoutMillis: 30000 },
-    }).connect();
-  }
-  return poolPromise;
-}
 
 function isValidDate(s: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s);
@@ -78,10 +60,10 @@ export async function GET(req: NextRequest) {
     `;
 
     const r = pool.request();
-    if (from) r.input("from", sql.VarChar(10), from);
-    if (to) r.input("to", sql.VarChar(10), to);
-    if (patente) r.input("patente", sql.VarChar(20), patente);
-    if (empresa) r.input("empresa", sql.VarChar(150), empresa);
+    if (from) r.input("from", from);
+    if (to) r.input("to", to);
+    if (patente) r.input("patente", patente);
+    if (empresa) r.input("empresa", empresa);
 
     const rs = await r.query(q);
 
@@ -100,4 +82,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
 }
-

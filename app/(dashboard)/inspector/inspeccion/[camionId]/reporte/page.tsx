@@ -3,337 +3,231 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Spinner } from "@/components/ui/spinner";
+// Importamos el hook de notificaciones (Asegúrate que la ruta sea correcta según tu proyecto, puede ser @/components/ui/use-toast o @/hooks/use-toast)
+import { useToast } from "@/hooks/use-toast"; 
 import {
   ChevronLeft,
-  Download,
   Share2,
-  CheckCircle2,
-  XCircle,
   Truck,
   Calendar,
   User,
   Clock,
   FileText,
-  ChevronRight,
+  Building2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Check
 } from "lucide-react";
-import { cn } from "@/lib/utils-cn";
 
-interface InspeccionReporte {
-  id: number;
+interface ReporteData {
   patente: string;
   marca: string;
   modelo: string;
   empresa: string;
   fecha: string;
   inspector: string;
-  detalles: {
-    categoria: string;
-    items: {
-      titulo: string;
-      estado: "cumple" | "no_cumple" | "no_aplica";
-      descripcion?: string;
-    }[];
-  }[];
-  resumen: {
-    total: number;
-    cumple: number;
-    noCumple: number;
-    noAplica: number;
-  };
+  nota: number;
+  resultado: string;
 }
 
 export default function InspeccionReportePage() {
   const router = useRouter();
+  const { toast } = useToast(); // Hook para el mensaje
   const params = useParams();
   const camionId = params.camionId as string;
 
   const [loading, setLoading] = useState(true);
-  const [reporte, setReporte] = useState<InspeccionReporte | null>(null);
+  const [reporte, setReporte] = useState<ReporteData | null>(null);
 
   useEffect(() => {
-    // Simular carga de datos del reporte
-    // En producción, esto vendría de la API
-    setTimeout(() => {
-      setReporte({
-        id: 1,
-        patente: "BJFP-32",
-        marca: "Volvo",
-        modelo: "FH16",
-        empresa: "Transportes ABC",
-        fecha: new Date().toISOString(),
-        inspector: "Juan Pérez",
-        detalles: [
-          {
-            categoria: "Frenos",
-            items: [
-              { titulo: "Fugas de aire", estado: "cumple" },
-              { titulo: "Mangueras cortadas", estado: "cumple" },
-              { titulo: "Cámaras de freno", estado: "no_cumple", descripcion: "Daño menor visible" },
-            ],
-          },
-          {
-            categoria: "Neumáticos",
-            items: [
-              { titulo: "Desgaste irregular", estado: "cumple" },
-              { titulo: "Neumáticos lisos", estado: "cumple" },
-              { titulo: "Cortes o globos", estado: "cumple" },
-            ],
-          },
-        ],
-        resumen: {
-          total: 50,
-          cumple: 45,
-          noCumple: 3,
-          noAplica: 2,
-        },
-      });
-      setLoading(false);
-    }, 1000);
+    async function loadReporte() {
+      try {
+        const res = await fetch(`/api/inspector/inspecciones/camion/${camionId}`);
+        const json = await res.json();
+
+        if (!res.ok || !json.data) throw new Error("Error al cargar reporte");
+
+        const datos = json.data;
+        const ultima = datos.ultimaInspeccion;
+
+        if (!ultima) {
+            console.warn("No hay inspección finalizada.");
+            return; 
+        }
+
+        const meRes = await fetch("/api/inspector/me");
+        const meJson = await meRes.json();
+        const inspectorNombre = meJson.data?.nombre || "Inspector";
+
+        setReporte({
+          patente: datos.patente,
+          marca: datos.marca,
+          modelo: datos.modelo,
+          empresa: datos.empresa.nombre,
+          fecha: ultima.fecha || new Date().toISOString(),
+          inspector: inspectorNombre,
+          nota: ultima.nota,
+          resultado: ultima.resultado?.toUpperCase() || "SIN RESULTADO",
+        });
+
+      } catch (error) {
+        console.error("Error cargando reporte:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadReporte();
   }, [camionId]);
+
+  // ✅ Nueva función para el botón Finalizar
+  const handleFinalizar = () => {
+    toast({
+      title: "¡Proceso finalizado!",
+      description: "Inspección registrada correctamente. Volviendo al inicio.",
+      duration: 4000,
+      // @ts-ignore
+      className: "bg-green-600 text-white border-none", // Estilo forzado verde para éxito
+    });
+    
+    // Redirigir al dashboard
+    router.push("/inspector");
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Spinner className="h-10 w-10 text-teal-600" />
+        <Spinner className="h-10 w-10 text-red-600" />
       </div>
     );
   }
 
   if (!reporte) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <p>No se encontró el reporte</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
+        <AlertCircle className="h-12 w-12 text-yellow-500 mb-4" />
+        <h2 className="text-xl font-bold text-gray-900">Reporte no disponible</h2>
+        <p className="text-gray-500 mt-2 mb-6">
+          La inspección aún no ha sido finalizada o no se encontraron datos.
+        </p>
+        <button 
+          onClick={() => router.push("/inspector")} 
+          className="px-6 py-3 bg-neutral-900 text-white rounded-xl font-semibold"
+        >
+          Volver al Inicio
+        </button>
       </div>
     );
   }
 
+  const isAprobado = reporte.resultado === 'APROBADO';
+  const isRechazado = reporte.resultado === 'RECHAZADO';
+  
+  // Como ahora el resultado es "PENDIENTE" al principio, agregamos un color neutro/azul
+  const isPendiente = reporte.resultado === 'PENDIENTE';
+
+  const badgeColor = isAprobado ? 'bg-green-100 text-green-700 border-green-200' :
+                     isRechazado ? 'bg-red-100 text-red-700 border-red-200' :
+                     'bg-blue-100 text-blue-700 border-blue-200'; // Azul para Pendiente
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-50 pb-32">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
+        <div className="px-4 py-3 flex items-center justify-between">
             <button
               onClick={() => router.push("/inspector")}
               className="p-2 -ml-2 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <ChevronLeft className="h-5 w-5 text-gray-600" />
             </button>
-
-            <h1 className="font-semibold text-gray-900">Reporte de Inspección</h1>
-
-            <button className="p-2 -mr-2 hover:bg-gray-100 rounded-lg transition-colors">
-              <Download className="h-5 w-5 text-gray-600" />
-            </button>
-          </div>
+            <h1 className="font-semibold text-gray-900">Reporte Final</h1>
+            <div className="w-8"></div>
         </div>
       </header>
 
-      {/* Content */}
       <div className="px-4 py-6 space-y-6">
-        {/* Vehicle Info */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <Truck className="h-5 w-5 text-teal-600" />
-            Información del Vehículo
-          </h3>
+        
+        <div className="flex flex-col items-center gap-4">
+            <span className={`px-6 py-2 rounded-full text-sm font-bold border flex items-center gap-2 ${badgeColor}`}>
+                {isAprobado ? <CheckCircle2 className="h-4 w-4"/> : 
+                 isRechazado ? <XCircle className="h-4 w-4"/> : 
+                 <Clock className="h-4 w-4"/>} {/* Reloj para Pendiente */}
+                {reporte.resultado === 'PENDIENTE' ? 'EN REVISIÓN' : reporte.resultado}
+            </span>
+            
+            <div className="text-center">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Calificación Preliminar</p>
+                <div className="flex items-baseline justify-center">
+                    <span className="text-5xl font-black text-slate-900">{reporte.nota}</span>
+                    <span className="text-xl text-gray-400 font-medium">/100</span>
+                </div>
+            </div>
+        </div>
 
-          <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Truck className="h-5 w-5 text-red-600" />
+            Vehículo Inspeccionado
+          </h3>
+          <div className="grid grid-cols-2 gap-y-4 gap-x-2">
             <div>
               <p className="text-xs text-gray-500 mb-1">Patente</p>
-              <p className="font-semibold text-gray-900">{reporte.patente}</p>
+              <p className="font-bold text-gray-900 text-lg">{reporte.patente}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500 mb-1">Modelo</p>
-              <p className="font-semibold text-gray-900">
-                {reporte.marca} {reporte.modelo}
-              </p>
+              <p className="font-semibold text-gray-900">{reporte.marca} {reporte.modelo}</p>
             </div>
-            <div className="col-span-2">
-              <p className="text-xs text-gray-500 mb-1">Empresa</p>
-              <p className="font-semibold text-gray-900">{reporte.empresa}</p>
+            <div className="col-span-2 pt-3 border-t border-gray-100 mt-1">
+              <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
+                    <Building2 className="h-4 w-4"/>
+                 </div>
+                 <div>
+                    <p className="text-xs text-gray-500">Empresa Cliente</p>
+                    <p className="font-semibold text-gray-900 text-sm">{reporte.empresa}</p>
+                 </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Inspection Details */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-teal-600" />
-            Detalles de Inspección
+        <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
+          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <FileText className="h-5 w-5 text-red-600" />
+            Datos de la Revisión
           </h3>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <Calendar className="h-5 w-5 text-gray-400" />
-                <span className="text-sm text-gray-600">Fecha</span>
-              </div>
-              <span className="text-sm font-medium text-gray-900">
-                {new Date(reporte.fecha).toLocaleDateString("es-CL", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
-              </span>
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+               <span className="text-sm text-gray-500 flex items-center gap-2"><Calendar className="h-4 w-4"/> Fecha</span>
+               <span className="text-sm font-medium text-gray-900">{new Date(reporte.fecha).toLocaleDateString("es-CL")}</span>
             </div>
-
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <Clock className="h-5 w-5 text-gray-400" />
-                <span className="text-sm text-gray-600">Hora</span>
-              </div>
-              <span className="text-sm font-medium text-gray-900">
-                {new Date(reporte.fecha).toLocaleTimeString("es-CL", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </span>
+            <div className="flex justify-between items-center">
+               <span className="text-sm text-gray-500 flex items-center gap-2"><Clock className="h-4 w-4"/> Hora</span>
+               <span className="text-sm font-medium text-gray-900">{new Date(reporte.fecha).toLocaleTimeString("es-CL", {hour: '2-digit', minute:'2-digit'})}</span>
             </div>
-
-            <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
-              <div className="flex items-center gap-3">
-                <User className="h-5 w-5 text-gray-400" />
-                <span className="text-sm text-gray-600">Inspector</span>
-              </div>
-              <span className="text-sm font-medium text-gray-900">
-                {reporte.inspector}
-              </span>
+            <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
+               <span className="text-sm text-gray-500 flex items-center gap-2"><User className="h-4 w-4"/> Inspector</span>
+               <span className="text-sm font-medium text-gray-900">{reporte.inspector}</span>
             </div>
           </div>
         </div>
 
-        {/* Summary Stats */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-900 mb-4">Resumen General</h3>
-
-          <div className="grid grid-cols-4 gap-2">
-            <div className="text-center p-3 bg-gray-50 rounded-xl">
-              <p className="text-2xl font-bold text-gray-900">
-                {reporte.resumen.total}
-              </p>
-              <p className="text-xs text-gray-500">Total</p>
-            </div>
-            <div className="text-center p-3 bg-green-50 rounded-xl">
-              <p className="text-2xl font-bold text-green-600">
-                {reporte.resumen.cumple}
-              </p>
-              <p className="text-xs text-green-600">OK</p>
-            </div>
-            <div className="text-center p-3 bg-red-50 rounded-xl">
-              <p className="text-2xl font-bold text-red-600">
-                {reporte.resumen.noCumple}
-              </p>
-              <p className="text-xs text-red-600">Fallas</p>
-            </div>
-            <div className="text-center p-3 bg-gray-100 rounded-xl">
-              <p className="text-2xl font-bold text-gray-500">
-                {reporte.resumen.noAplica}
-              </p>
-              <p className="text-xs text-gray-500">N/A</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Category Breakdown */}
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
-          <h3 className="font-semibold text-gray-900 mb-4">
-            Desglose por Categoría
-          </h3>
-
-          <div className="space-y-3">
-            {reporte.detalles.map((categoria, idx) => {
-              const hasIssues = categoria.items.some(
-                (i) => i.estado === "no_cumple"
-              );
-
-              return (
-                <div
-                  key={idx}
-                  className={cn(
-                    "p-3 rounded-xl border transition-all",
-                    hasIssues
-                      ? "border-red-200 bg-red-50/50"
-                      : "border-gray-100 bg-gray-50"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center",
-                          hasIssues ? "bg-red-100" : "bg-green-100"
-                        )}
-                      >
-                        {hasIssues ? (
-                          <XCircle className="h-4 w-4 text-red-600" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        )}
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {categoria.categoria}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {categoria.items.filter((i) => i.estado === "cumple").length}/
-                          {categoria.items.length} items OK
-                        </p>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-gray-300" />
-                  </div>
-
-                  {hasIssues && (
-                    <div className="mt-3 pt-3 border-t border-red-100 space-y-2">
-                      {categoria.items
-                        .filter((i) => i.estado === "no_cumple")
-                        .map((item, iIdx) => (
-                          <div
-                            key={iIdx}
-                            className="flex items-start gap-2 text-sm"
-                          >
-                            <XCircle className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
-                            <div>
-                              <p className="font-medium text-red-700">
-                                {item.titulo}
-                              </p>
-                              {item.descripcion && (
-                                <p className="text-red-600/80 text-xs">
-                                  {item.descripcion}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
 
-      {/* Fixed Bottom Actions */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 z-50">
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            onClick={() => {
-              // Compartir reporte
-            }}
-            className="py-3 px-6 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors flex items-center justify-center gap-2"
-          >
-            <Share2 className="h-5 w-5" />
-            COMPARTIR
-          </button>
-          <button
-            onClick={() => router.push("/inspector")}
-            className="py-3 px-6 bg-teal-600 text-white font-semibold rounded-xl hover:bg-teal-700 transition-colors"
-          >
-            FINALIZAR
-          </button>
+        <div className="grid grid-cols-2 gap-3 max-w-xl mx-auto">
+            <button className="py-3.5 px-4 bg-gray-100 text-gray-700 font-bold rounded-xl flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors">
+                <Share2 className="h-5 w-5"/> Compartir
+            </button>
+            <button
+                onClick={handleFinalizar}
+                className="py-3.5 px-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+            >
+                <Check className="h-5 w-5" />
+                FINALIZAR
+            </button>
         </div>
       </div>
     </div>

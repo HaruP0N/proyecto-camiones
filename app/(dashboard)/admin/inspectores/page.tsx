@@ -2,6 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import AdminShell from "../_components/AdminShell";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { ArrowLeft } from "lucide-react";
 
 type Inspector = {
   id: number;
@@ -221,6 +225,12 @@ export default function AdminInspectoresPage() {
 
         {items.length === 0 ? <div style={{ padding: 10, color: "#6b7280" }}>No hay inspectores.</div> : null}
       </div>
+
+      <Button variant="outline" asChild>
+        <Link href="/admin">
+          <ArrowLeft className="mr-2" /> Volver
+        </Link>
+      </Button>
     </AdminShell>
   );
 }

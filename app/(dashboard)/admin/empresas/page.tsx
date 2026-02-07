@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
+import Link from "next/link"
 import AdminShell from "../_components/AdminShell"
 
 type Empresa = {
@@ -12,22 +13,7 @@ type Empresa = {
   telefono_contacto: string
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  card: { border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" },
-  input: { width: "100%", padding: "10px 10px", borderRadius: 10, border: "1px solid #e5e7eb", outline: "none" },
-  btn: { padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", fontWeight: 800, cursor: "pointer", background: "#111827", color: "white" },
-  btnSoft: { padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", fontWeight: 800, cursor: "pointer", background: "white" },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "90px 1fr 160px 180px 180px 180px 240px",
-    gap: 10,
-    alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid #eee",
-  },
-  err: { border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 14, padding: 10, marginBottom: 12, fontWeight: 800 },
-  ok: { border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", borderRadius: 14, padding: 10, marginBottom: 12, fontWeight: 800 },
-}
+// ...existing code...
 
 // helper: parse JSON sin romper si viene vacío o HTML
 async function safeJson(res: Response) {
@@ -38,6 +24,27 @@ async function safeJson(res: Response) {
   } catch {
     return null
   }
+}
+
+const styles = {
+  err: {
+    color: "#b91c1c",
+    background: "#fee2e2",
+    border: "1px solid #fca5a5",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    marginBottom: "8px",
+    fontWeight: "bold",
+  },
+  ok: {
+    color: "#166534",
+    background: "#dcfce7",
+    border: "1px solid #86efac",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    marginBottom: "8px",
+    fontWeight: "bold",
+  },
 }
 
 export default function AdminEmpresasPage() {
@@ -129,47 +136,112 @@ export default function AdminEmpresasPage() {
       {err ? <div style={styles.err}>{err}</div> : null}
       {ok ? <div style={styles.ok}>{ok}</div> : null}
 
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: 900 }}>Lista de empresas</div>
-          <button style={styles.btnSoft} onClick={load} disabled={loading}>
+      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm max-w-4xl mx-auto mt-4">
+        <div className="flex justify-between items-center mb-4">
+          <div className="font-bold text-lg">Lista de empresas</div>
+          <button className="px-4 py-2 rounded-lg border font-bold bg-white hover:bg-gray-50 text-gray-900" onClick={load} disabled={loading}>
             {loading ? "Cargando..." : "Refrescar"}
           </button>
         </div>
-
-        <div style={{ ...styles.row, fontWeight: 900, color: "#6b7280" }}>
-          <div>ID</div>
-          <div>Nombre</div>
-          <div>RUT</div>
-          <div>Rubro</div>
-          <div>Email</div>
-          <div>Teléfono</div>
-          <div>Acciones</div>
+        <div className="mb-4">
+          <Link href="/admin" className="inline-block px-4 py-2 rounded-lg border font-bold bg-gray-100 hover:bg-gray-200 text-gray-900">
+            ← Volver
+          </Link>
         </div>
-
-        {items.map((it) => {
-          const local = edit[it.id] || {}
-          const v = (k: keyof Empresa) => (local[k] ?? it[k]) as string
-
-          return (
-            <div key={it.id} style={styles.row}>
-              <div style={{ fontWeight: 900 }}>{it.id}</div>
-
-              <input style={styles.input} value={v("nombre")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))} />
-              <input style={styles.input} value={v("rut")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rut: e.target.value } }))} />
-              <input style={styles.input} value={v("rubro")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rubro: e.target.value } }))} />
-              <input style={styles.input} value={v("email_contacto")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email_contacto: e.target.value } }))} />
-              <input style={styles.input} value={v("telefono_contacto")} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], telefono_contacto: e.target.value } }))} />
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button style={styles.btn} onClick={() => guardar(it.id)}>Guardar</button>
-                <button style={styles.btnSoft} onClick={() => resetPin(it.id)}>Reset PIN</button>
-              </div>
-            </div>
-          )
-        })}
-
-        {items.length === 0 ? <div style={{ padding: 10, color: "#6b7280" }}>No hay empresas.</div> : null}
+        {/* Responsive Card for mobile */}
+        <div className="md:hidden space-y-4">
+          {items.length === 0 ? (
+            <div className="text-gray-500 p-2">No hay empresas.</div>
+          ) : (
+            items.map((it) => {
+              const local = edit[it.id] || {}
+              const v = (k: keyof Empresa) => (local[k] ?? it[k]) ?? ""
+              return (
+                <div key={it.id} className="border rounded-lg p-3 bg-white shadow-sm">
+                  <div className="font-bold mb-2">ID: {it.id}</div>
+                  <div className="mb-2">
+                    <label className="block text-sm font-semibold mb-1">Nombre</label>
+                    <input className="w-full px-3 py-2 rounded-lg border" value={v("nombre") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))} />
+                  </div>
+                  <div className="mb-2">
+                    <label className="block text-sm font-semibold mb-1">RUT</label>
+                    <input className="w-full px-3 py-2 rounded-lg border" value={v("rut") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rut: e.target.value } }))} />
+                  </div>
+                  <div className="mb-2">
+                    <label className="block text-sm font-semibold mb-1">Rubro</label>
+                    <input className="w-full px-3 py-2 rounded-lg border" value={v("rubro") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rubro: e.target.value } }))} />
+                  </div>
+                  <div className="mb-2">
+                    <label className="block text-sm font-semibold mb-1">Email</label>
+                    <input className="w-full px-3 py-2 rounded-lg border" value={v("email_contacto") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email_contacto: e.target.value } }))} />
+                  </div>
+                  <div className="mb-2">
+                    <label className="block text-sm font-semibold mb-1">Teléfono</label>
+                    <input className="w-full px-3 py-2 rounded-lg border" value={v("telefono_contacto") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], telefono_contacto: e.target.value } }))} />
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <button className="px-4 py-2 rounded-lg border font-bold bg-gray-900 text-white" onClick={() => guardar(it.id)}>Guardar</button>
+                    <button className="px-4 py-2 rounded-lg border font-bold bg-white" onClick={() => resetPin(it.id)}>Reset PIN</button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+        {/* Table for desktop */}
+        <div className="hidden md:block mt-6">
+          <table className="min-w-full border border-gray-200 rounded-lg">
+            <thead>
+              <tr className="bg-gray-50 text-gray-600 font-bold">
+                <th className="px-3 py-2 border-b">ID</th>
+                <th className="px-3 py-2 border-b">Nombre</th>
+                <th className="px-3 py-2 border-b">RUT</th>
+                <th className="px-3 py-2 border-b">Rubro</th>
+                <th className="px-3 py-2 border-b">Email</th>
+                <th className="px-3 py-2 border-b">Teléfono</th>
+                <th className="px-3 py-2 border-b">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="text-center text-gray-500 py-4">No hay empresas.</td>
+                </tr>
+              ) : (
+                items.map((it) => {
+                  const local = edit[it.id] || {}
+                  const v = (k: keyof Empresa) => (local[k] ?? it[k]) ?? ""
+                  return (
+                    <tr key={it.id} className="border-t">
+                      <td className="px-3 py-2 font-bold">{it.id}</td>
+                      <td className="px-3 py-2">
+                        <input className="w-full px-3 py-2 rounded-lg border" value={v("nombre") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input className="w-full px-3 py-2 rounded-lg border" value={v("rut") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rut: e.target.value } }))} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input className="w-full px-3 py-2 rounded-lg border" value={v("rubro") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], rubro: e.target.value } }))} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input className="w-full px-3 py-2 rounded-lg border" value={v("email_contacto") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email_contacto: e.target.value } }))} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <input className="w-full px-3 py-2 rounded-lg border" value={v("telefono_contacto") ?? ""} onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], telefono_contacto: e.target.value } }))} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-2">
+                          <button className="px-4 py-2 rounded-lg border font-bold bg-gray-900 text-white" onClick={() => guardar(it.id)}>Guardar</button>
+                          <button className="px-4 py-2 rounded-lg border font-bold bg-white" onClick={() => resetPin(it.id)}>Reset PIN</button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </AdminShell>
   )
