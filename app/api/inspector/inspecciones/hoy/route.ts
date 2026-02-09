@@ -19,35 +19,45 @@ export async function GET(req: NextRequest) {
 
     // 3. Usamos session.userId en la consulta obligatoriamente
     let q = `
-      SELECT
-        i.id,
-        i.camion_id,
-        c.patente,
-        c.marca,
-        c.modelo,
-        e.nombre AS empresa_nombre,
-        i.inspector_id,
-        i.estado,
-        CONVERT(varchar(30), i.fecha_programada, 126) AS fecha_programada,
-        CONVERT(varchar(30), i.fecha_inspeccion, 126) AS fecha_inspeccion,
-        i.resultado_general,
-        i.observaciones_generales
-      FROM dbo.inspecciones i
-      LEFT JOIN dbo.camiones c ON c.id = i.camion_id
-      LEFT JOIN dbo.proveedores p ON p.id = c.proveedor_id
-      LEFT JOIN dbo.empresas e ON e.id = p.empresa_id
-      WHERE 
-        i.inspector_id = @inspectorId  -- ✅ Filtro de seguridad obligatorio
-        AND CAST(i.fecha_programada AT TIME ZONE 'UTC' AT TIME ZONE 'Pacific SA Standard Time' AS DATE) 
-        = 
-        CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)
+      WITH base AS (
+        SELECT
+          i.id,
+          i.camion_id,
+          c.patente,
+          c.marca,
+          c.modelo,
+          e.nombre AS empresa_nombre,
+          i.inspector_id,
+          i.estado,
+          CONVERT(varchar(30), i.fecha_programada, 126) AS fecha_programada,
+          CONVERT(varchar(30), i.fecha_inspeccion, 126) AS fecha_inspeccion,
+          i.resultado_general,
+          i.observaciones_generales,
+          i.revision_admin,
+          i.comentario_admin,
+          ROW_NUMBER() OVER (
+            PARTITION BY i.camion_id
+            ORDER BY i.fecha_programada DESC, i.id DESC
+          ) AS rn
+        FROM dbo.inspecciones i
+        LEFT JOIN dbo.camiones c ON c.id = i.camion_id
+        LEFT JOIN dbo.proveedores p ON p.id = c.proveedor_id
+        LEFT JOIN dbo.empresas e ON e.id = p.empresa_id
+        WHERE 
+          i.inspector_id = @inspectorId  -- ✅ Filtro de seguridad obligatorio
+          AND i.estado = 'PROGRAMADA'
+          AND CAST(i.fecha_programada AT TIME ZONE 'UTC' AT TIME ZONE 'Pacific SA Standard Time' AS DATE) 
+          = 
+          CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)
+      )
+      SELECT * FROM base WHERE rn = 1
     `;
 
     const request = pool.request();
     // 4. Inyectamos el ID real de la sesión
     request.input("inspectorId", session.userId);
 
-    q += " ORDER BY i.fecha_programada ASC";
+    q += " ORDER BY fecha_programada ASC";
 
     const res = await request.query(q);
     return NextResponse.json({ ok: true, data: res.recordset ?? [] });

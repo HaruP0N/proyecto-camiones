@@ -1,0 +1,29 @@
+:root {
+  --color-accion: #7f1d1d;
+  --color-accion-hover: #5f1414;
+  --color-accion-disabled: #9ca3af;
+  --color-exito: #16a34a;
+  --color-error: #dc2626;
+}
+
+.petran-header {
+  position: relative;
+  min-height: 220px;
+  padding: 20px 16px 36px;
+  background:
+    radial-gradient(circle at 85% 10%, rgba(255, 255, 255, 0.1), transparent 42%),
+    linear-gradient(180deg, hsl(var(--primary)) 0%, rgba(0, 0, 0, 0.12) 100%);
+  overflow: hidden;
+}
+
+.petran-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 28px;
+  background: hsl(var(--background));
+  border-top-left-radius: 24px;
+  border-top-right-radius: 24px;
+}

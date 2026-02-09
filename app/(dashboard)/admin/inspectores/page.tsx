@@ -1,34 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import AdminShell from "../_components/AdminShell";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Search, RefreshCw } from "lucide-react";
+import AdminShell from "../_components/AdminShell";
 
 type Inspector = {
   id: number;
   nombre: string | null;
   email: string | null;
   activo?: number | boolean | null;
-};
-
-const styles: Record<string, React.CSSProperties> = {
-  card: { border: "1px solid #e5e7eb", borderRadius: 14, padding: 12, background: "white" },
-  row: {
-    display: "grid",
-    gridTemplateColumns: "90px 1fr 260px 120px 360px",
-    gap: 10,
-    alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid #eee",
-  },
-  input: { width: "100%", padding: "10px 10px", borderRadius: 10, border: "1px solid #e5e7eb", outline: "none" },
-  btn: { padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", fontWeight: 800, cursor: "pointer", background: "#111827", color: "white" },
-  btnSoft: { padding: "10px 12px", borderRadius: 10, border: "1px solid #e5e7eb", fontWeight: 800, cursor: "pointer", background: "white" },
-  err: { border: "1px solid #fecaca", background: "#fff1f2", color: "#991b1b", borderRadius: 14, padding: 10, marginBottom: 12, fontWeight: 800 },
-  ok: { border: "1px solid #bbf7d0", background: "#f0fdf4", color: "#166534", borderRadius: 14, padding: 10, marginBottom: 12, fontWeight: 800 },
 };
 
 export default function AdminInspectoresPage() {
@@ -44,6 +25,8 @@ export default function AdminInspectoresPage() {
 
   // edición inline
   const [edit, setEdit] = useState<Record<number, Partial<Inspector>>>({});
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -66,6 +49,24 @@ export default function AdminInspectoresPage() {
   useEffect(() => {
     load();
   }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter((it) =>
+      [it.nombre, it.email].filter(Boolean).some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [items, search]);
+
+  useEffect(() => {
+    if (filtered.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    if (!selectedId || !filtered.some((it) => it.id === selectedId)) {
+      setSelectedId(filtered[0].id);
+    }
+  }, [filtered, selectedId]);
 
   async function crearInspector() {
     setErr("");
@@ -153,84 +154,221 @@ export default function AdminInspectoresPage() {
     setEdit((p) => ({ ...p, [id]: { ...p[id], activo: next } }));
   }
 
+  const selected = items.find((it) => it.id === selectedId) || null;
+  const selectedEdit = selected ? edit[selected.id] || {} : {};
+  const dirty = selected ? Object.keys(selectedEdit).length > 0 : false;
+
+  const nombreV = selected ? (selectedEdit.nombre ?? selected.nombre ?? "") : "";
+  const emailV = selected ? (selectedEdit.email ?? selected.email ?? "") : "";
+  const activoV = selected ? (selectedEdit.activo ?? selected.activo ?? 1) : 1;
+
   return (
     <AdminShell title="Inspectores" subtitle="Crear, editar, activar/desactivar y reset de contraseña.">
-      {err ? <div style={styles.err}>{err}</div> : null}
-      {ok ? <div style={styles.ok}>{ok}</div> : null}
+      <div className="space-y-6">
+        {err ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            ⚠️ {err}
+          </div>
+        ) : null}
+        {ok ? (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            ✓ {ok}
+          </div>
+        ) : null}
 
-      <div style={{ ...styles.card, marginBottom: 12 }}>
-        <div style={{ fontWeight: 900, marginBottom: 8 }}>Crear inspector</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 200px", gap: 10 }}>
-          <input style={styles.input} placeholder="Nombre" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-          <input style={styles.input} placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input style={styles.input} placeholder="Contraseña inicial" value={passwordInicial} onChange={(e) => setPasswordInicial(e.target.value)} />
-          <button style={styles.btn} onClick={crearInspector} disabled={loading}>Crear</button>
+        <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Crear</div>
+              <div className="mt-1 text-lg font-black text-gray-900">Nuevo Inspector</div>
+            </div>
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver
+            </Link>
+          </div>
+
+          <div className="mt-4 grid grid-cols-[1fr_1fr_1fr_200px] gap-4">
+            <input
+              className="h-11 rounded-xl border border-gray-200 px-3 text-sm font-medium"
+              placeholder="Nombre"
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+            />
+            <input
+              className="h-11 rounded-xl border border-gray-200 px-3 text-sm font-medium"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <input
+              className="h-11 rounded-xl border border-gray-200 px-3 text-sm font-medium"
+              placeholder="Contraseña inicial"
+              value={passwordInicial}
+              onChange={(e) => setPasswordInicial(e.target.value)}
+            />
+            <button
+              onClick={crearInspector}
+              disabled={loading}
+              className="h-11 rounded-xl bg-gray-900 text-sm font-bold text-white shadow hover:bg-black"
+            >
+              Crear
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: 900 }}>Lista de inspectores</div>
-          <button style={styles.btnSoft} onClick={load} disabled={loading}>
-            {loading ? "Cargando..." : "Refrescar"}
+        <div className="flex items-center justify-between">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar inspector..."
+              className="h-10 w-72 rounded-full border border-gray-200 bg-white pl-9 pr-4 text-sm font-medium text-gray-700 focus:border-red-300 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            {loading ? "Cargando" : "Refrescar"}
           </button>
         </div>
 
-        <div style={{ ...styles.row, fontWeight: 900, color: "#6b7280" }}>
-          <div>ID</div>
-          <div>Nombre</div>
-          <div>Email</div>
-          <div>Activo</div>
-          <div>Acciones</div>
-        </div>
-
-        {items.map((it) => {
-          const local = edit[it.id] || {};
-          const nombreV = (local.nombre ?? it.nombre ?? "") as string;
-          const emailV = (local.email ?? it.email ?? "") as string;
-          const activoV = local.activo ?? it.activo ?? 1;
-
-          return (
-            <div key={it.id} style={styles.row}>
-              <div style={{ fontWeight: 900 }}>{it.id}</div>
-
-              <input
-                style={styles.input}
-                value={nombreV}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], nombre: e.target.value } }))}
-              />
-
-              <input
-                style={styles.input}
-                value={emailV}
-                onChange={(e) => setEdit((p) => ({ ...p, [it.id]: { ...p[it.id], email: e.target.value } }))}
-              />
-
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800 }}>
-                <input
-                  type="checkbox"
-                  checked={activoV === 1 || activoV === true}
-                  onChange={() => toggleActivo(it.id, activoV)}
-                />
-                Activo
-              </label>
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <button style={styles.btn} onClick={() => guardar(it.id)}>Guardar</button>
-                <button style={styles.btnSoft} onClick={() => resetPassword(it.id)}>Reset password</button>
+        <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-6">
+          <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Listado</div>
+                <div className="mt-1 text-lg font-black text-gray-900">Inspectores</div>
               </div>
+              <div className="text-xs font-semibold text-gray-400">{filtered.length} registros</div>
             </div>
-          );
-        })}
 
-        {items.length === 0 ? <div style={{ padding: 10, color: "#6b7280" }}>No hay inspectores.</div> : null}
+            <div className="mt-4 space-y-3">
+              {filtered.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                  No hay inspectores.
+                </div>
+              ) : (
+                filtered.map((it) => {
+                  const active = it.id === selectedId;
+                  const isDirty = !!edit[it.id] && Object.keys(edit[it.id]).length > 0;
+                  const isActive = (edit[it.id]?.activo ?? it.activo ?? 1) === 1 || (edit[it.id]?.activo ?? it.activo) === true;
+                  return (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => setSelectedId(it.id)}
+                      className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+                        active
+                          ? "border-red-200 bg-red-50 shadow-sm"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-sm font-bold text-gray-900">{it.nombre || "Sin nombre"}</div>
+                          <div className="text-xs text-gray-500">{it.email || "Sin email"}</div>
+                        </div>
+                        {isDirty ? (
+                          <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                            Sin guardar
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                        <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase ${
+                          isActive ? "bg-emerald-100 text-emerald-700" : "bg-gray-100 text-gray-500"
+                        }`}>
+                          {isActive ? "Activo" : "Inactivo"}
+                        </span>
+                        <span>ID {it.id}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-gray-200 bg-white p-5 shadow-sm">
+            {!selected ? (
+              <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-gray-500">
+                Selecciona un inspector para ver detalle.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Detalle</div>
+                    <div className="mt-1 text-2xl font-black text-gray-900">
+                      {selected.nombre || "Inspector"}
+                    </div>
+                    <div className="mt-1 text-sm text-gray-500">ID #{selected.id}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => guardar(selected.id)}
+                      className="rounded-full bg-gray-900 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow hover:bg-black"
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      onClick={() => resetPassword(selected.id)}
+                      className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-gray-700 hover:bg-gray-50"
+                    >
+                      Reset password
+                    </button>
+                  </div>
+                </div>
+
+                {dirty ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-semibold text-amber-700">
+                    Hay cambios sin guardar.
+                  </div>
+                ) : null}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Nombre</label>
+                    <input
+                      className="mt-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      value={nombreV as string}
+                      onChange={(e) => setEdit((p) => ({ ...p, [selected.id]: { ...p[selected.id], nombre: e.target.value } }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Email</label>
+                    <input
+                      className="mt-2 h-10 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      value={emailV as string}
+                      onChange={(e) => setEdit((p) => ({ ...p, [selected.id]: { ...p[selected.id], email: e.target.value } }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Estado</label>
+                    <div className="mt-3 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={activoV === 1 || activoV === true}
+                        onChange={() => toggleActivo(selected.id, activoV)}
+                        className="h-5 w-5 accent-red-600"
+                      />
+                      <span className="text-sm font-semibold text-gray-700">Activo</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
-
-      <Button variant="outline" asChild>
-        <Link href="/admin">
-          <ArrowLeft className="mr-2" /> Volver
-        </Link>
-      </Button>
     </AdminShell>
   );
 }

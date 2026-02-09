@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       data: {
         id: inspector.id,
         email: inspector.email,
-        role: inspector.role,
+        role: inspector.rol,
       },
     });
   } catch (error) {

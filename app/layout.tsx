@@ -1,5 +1,5 @@
 import type React from "react"
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
@@ -20,6 +20,7 @@ export const metadata: Metadata = {
   title: "Registro de Empresas - Azure SQL",
   description: "Sistema de registro de empresas clientes con Azure SQL Database",
   generator: "v0.app",
+  manifest: "/manifest.webmanifest",
   icons: {
     icon: [
       { url: "/icon-light-32x32.png", media: "(prefers-color-scheme: light)" },
@@ -28,6 +29,10 @@ export const metadata: Metadata = {
     ],
     apple: "/apple-icon.png",
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: "#7f1d1d",
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

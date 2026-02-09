@@ -13,14 +13,6 @@ export async function POST(req: NextRequest) {
 
     if (!rut) return NextResponse.json({ error: "RUT es requerido" }, { status: 400 });
     if (!isValidPin(pin)) return NextResponse.json({ error: "PIN inválido (4 dígitos)" }, { status: 400 });
-
-
-console.log("AZURE_SQL_SERVER:", process.env.AZURE_SQL_SERVER);
-console.log("AZURE_SQL_DATABASE:", process.env.AZURE_SQL_DATABASE);
-console.log("AZURE_SQL_USER:", process.env.AZURE_SQL_USER);
-console.log("Has AZURE_SQL_PASSWORD:", !!process.env.AZURE_SQL_PASSWORD);
-console.log("NODE_ENV:", process.env.NODE_ENV);
-
     const pool = await getPool();
 
     const result = await pool

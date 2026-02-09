@@ -41,6 +41,11 @@ export default function LoginPage() {
         return;
       }
 
+      localStorage.setItem("petran_session", "active");
+      if (data?.user) {
+        localStorage.setItem("petran_user", JSON.stringify(data.user));
+      }
+
       const rol = data?.user?.rol;
 
       if (rol === "admin") {

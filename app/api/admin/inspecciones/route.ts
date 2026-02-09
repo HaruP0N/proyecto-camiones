@@ -46,10 +46,11 @@ export async function GET(req: NextRequest) {
       whereConditions.push("ip.id IS NULL");
     } else if (estado === "PROGRAMADA") {
       whereConditions.push("ip.id IS NOT NULL");
-      whereConditions.push("ip.fecha_programada >= CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATETIME)");
+      // Consideramos el día completo en zona Chile (no solo la hora)
+      whereConditions.push("CAST(ip.fecha_programada AS DATE) >= CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)");
     } else if (estado === "VENCIDA") {
       whereConditions.push("ip.id IS NOT NULL");
-      whereConditions.push("ip.fecha_programada < CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATETIME)");
+      whereConditions.push("CAST(ip.fecha_programada AS DATE) < CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)");
     }
 
     // 5. Consulta SQL Optimizada
@@ -104,7 +105,11 @@ export async function GET(req: NextRequest) {
       const fechaProg = row.fecha_programada ? new Date(row.fecha_programada) : null;
 
       if (fechaProg) {
-        ui_estado = fechaProg >= now ? "PROGRAMADA" : "VENCIDA";
+        const hoy = new Date();
+        // Comparar por fecha local (no por hora) para no marcar vencida el mismo día
+        const fechaSolo = new Date(fechaProg.getFullYear(), fechaProg.getMonth(), fechaProg.getDate());
+        const hoySolo = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+        ui_estado = fechaSolo >= hoySolo ? "PROGRAMADA" : "VENCIDA";
       }
 
       return {

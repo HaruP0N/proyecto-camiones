@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { Truck, Building2, CalendarDays, BarChart3, AlertTriangle } from "lucide-react";
 import AdminShell from "./_components/AdminShell";
 
 type Kpis = {
@@ -149,169 +150,77 @@ export default function AdminHomePage() {
   }, []);
 
   return (
-    <AdminShell title="Panel de Control">
-      {err ? (
-        <div
-          style={{
-            background: "#FEE",
-            border: "2px solid #DC2626",
-            borderRadius: 8,
-            padding: 16,
-            marginBottom: 24,
-            color: "#DC2626",
-            fontWeight: 700,
-            fontSize: 14,
-          }}
-        >
-          ⚠️ {err}
-        </div>
-      ) : null}
+    <AdminShell
+      title="Panel de Control"
+      subtitle="Resumen ejecutivo de inspecciones, cumplimiento y operación diaria"
+    >
+      <div className="space-y-8">
+        {err ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            ⚠️ {err}
+          </div>
+        ) : null}
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-          gap: 16,
-          marginBottom: 32,
-        }}
-      >
-        <StatCard
-          title="Total de Camiones Registrados"
-          value={kpis?.camionesTotal ?? 0}
-          loading={!kpis}
-          icon={<TruckIcon />}
-        />
-        <StatCard
-          title="Total de Empresas Activas"
-          value={kpis?.empresasTotal ?? 0}
-          loading={!kpis}
-          icon={<BuildingIcon />}
-        />
-        <StatCard
-          title="Inspecciones Programadas Hoy"
-          value={kpis?.inspeccionesHoyProgramadas ?? 0}
-          loading={!kpis}
-          icon={<CalendarIcon />}
-        />
-        <StatCard
-          title="Inspecciones Programadas Esta Semana"
-          value={kpis?.inspeccionesSemanaProgramadas ?? 0}
-          loading={!kpis}
-          icon={<ChartIcon />}
-        />
-        <StatCard
-          title="Inspecciones Vencidas"
-          value={kpis?.inspeccionesVencidas ?? 0}
-          loading={!kpis}
-          variant="alert"
-          icon={<AlertIcon />}
-        />
-      </div>
+        <section className="grid grid-cols-5 gap-6">
+          <StatCard
+            title="Total de Camiones Registrados"
+            value={kpis?.camionesTotal ?? 0}
+            loading={!kpis}
+            icon={<Truck className="h-5 w-5" />}
+          />
+          <StatCard
+            title="Total de Empresas Activas"
+            value={kpis?.empresasTotal ?? 0}
+            loading={!kpis}
+            icon={<Building2 className="h-5 w-5" />}
+          />
+          <StatCard
+            title="Inspecciones Programadas Hoy"
+            value={kpis?.inspeccionesHoyProgramadas ?? 0}
+            loading={!kpis}
+            icon={<CalendarDays className="h-5 w-5" />}
+          />
+          <StatCard
+            title="Inspecciones Programadas Esta Semana"
+            value={kpis?.inspeccionesSemanaProgramadas ?? 0}
+            loading={!kpis}
+            icon={<BarChart3 className="h-5 w-5" />}
+          />
+          <StatCard
+            title="Inspecciones Vencidas"
+            value={kpis?.inspeccionesVencidas ?? 0}
+            loading={!kpis}
+            variant="alert"
+            icon={<AlertTriangle className="h-5 w-5" />}
+          />
+        </section>
 
-      <div
-        style={{
-          marginBottom: 24,
-          paddingBottom: 16,
-          borderBottom: "2px solid #E5E7EB",
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 20,
-            fontWeight: 700,
-            color: "#111827",
-            marginBottom: 6,
-          }}
-        >
-          Análisis de Rendimiento
-        </h2>
-        <p
-          style={{
-            fontSize: 14,
-            color: "#6B7280",
-            margin: 0,
-          }}
-        >
-          Métricas de desempeño y calidad de inspecciones
-        </p>
-      </div>
+        <section className="flex items-end justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">
+              Desempeño
+            </div>
+            <h2 className="mt-2 text-2xl font-black text-gray-900">Análisis de Rendimiento</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Métricas de calidad, cumplimiento y resultados operativos
+            </p>
+          </div>
+          <div className="rounded-full border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-500">
+            Actualizado hoy
+          </div>
+        </section>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-          gap: 20,
-          marginBottom: 20,
-        }}
-      >
-        <ChartCard title="Resultados de Inspecciones (últimos 30 días)">
-          {loading || !stats ? (
-            <LoadingSpinner />
-          ) : (
-            <ResultadosChart resultados={stats.resultados} />
-          )}
-        </ChartCard>
+        <section className="grid grid-cols-2 gap-6">
+          <ChartCard title="Resultados de Inspecciones (últimos 30 días)">
+            {loading || !stats ? <LoadingSpinner /> : <ResultadosChart resultados={stats.resultados} />}
+          </ChartCard>
 
-        <ChartCard title="Tasa de Cumplimiento (este mes)">
-          {loading || !stats ? (
-            <LoadingSpinner />
-          ) : (
-            <CumplimientoChart cumplimiento={stats.cumplimiento} />
-          )}
-        </ChartCard>
+          <ChartCard title="Tasa de Cumplimiento (este mes)">
+            {loading || !stats ? <LoadingSpinner /> : <CumplimientoChart cumplimiento={stats.cumplimiento} />}
+          </ChartCard>
+        </section>
       </div>
     </AdminShell>
-  );
-}
-
-function TruckIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="1" y="3" width="15" height="13" rx="2" />
-      <path d="M16 8h3l3 3v5h-2" />
-      <circle cx="5.5" cy="18.5" r="2.5" />
-      <circle cx="18.5" cy="18.5" r="2.5" />
-    </svg>
-  );
-}
-
-function BuildingIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="4" y="2" width="16" height="20" rx="2" />
-      <path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="4" width="18" height="18" rx="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
-  );
-}
-
-function ChartIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-    </svg>
-  );
-}
-
-function AlertIcon() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-      <line x1="12" y1="9" x2="12" y2="13" />
-      <line x1="12" y1="17" x2="12.01" y2="17" />
-    </svg>
   );
 }
 
@@ -330,45 +239,34 @@ function StatCard({
 }) {
   return (
     <div
-      style={{
-        background: variant === "alert" ? "#FEE2E2" : "white",
-        border: `2px solid ${variant === "alert" ? "#DC2626" : "#E5E7EB"}`,
-        borderRadius: 12,
-        padding: 20,
-        minHeight: 140,
-      }}
+      className={`relative overflow-hidden rounded-3xl border px-5 py-4 shadow-sm transition-all ${
+        variant === "alert"
+          ? "border-red-200 bg-red-50"
+          : "border-gray-200 bg-white"
+      }`}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 12,
-          color: variant === "alert" ? "#DC2626" : "#6B7280",
-        }}
-      >
-        {icon}
+      <div className="absolute -right-8 -top-8 h-20 w-20 rounded-full bg-red-500/10 blur-2xl" />
+      <div className="relative flex items-center gap-3 text-sm font-semibold text-gray-500">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${
+            variant === "alert"
+              ? "border-red-200 bg-red-100 text-red-600"
+              : "border-gray-200 bg-gray-50 text-gray-600"
+          }`}
+        >
+          {icon}
+        </div>
+        <span>{title}</span>
       </div>
       <div
-        style={{
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#6B7280",
-          marginBottom: 8,
-          lineHeight: 1.3,
-        }}
-      >
-        {title}
-      </div>
-      <div
-        style={{
-          fontSize: 42,
-          fontWeight: 900,
-          color: variant === "alert" ? "#DC2626" : "#111827",
-          letterSpacing: -1,
-        }}
+        className={`mt-4 text-4xl font-black tracking-tight ${
+          variant === "alert" ? "text-red-700" : "text-gray-900"
+        }`}
       >
         {loading ? "..." : value}
+      </div>
+      <div className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">
+        Registro
       </div>
     </div>
   );
@@ -376,27 +274,13 @@ function StatCard({
 
 function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div
-      style={{
-        background: "white",
-        border: "1px solid #E5E7EB",
-        borderRadius: 12,
-        padding: 24,
-        minHeight: 350,
-      }}
-    >
-      <h3
-        style={{
-          fontSize: 15,
-          fontWeight: 700,
-          color: "#111827",
-          marginBottom: 20,
-          textAlign: "center",
-          letterSpacing: 0.3,
-        }}
-      >
-        {title}
-      </h3>
+    <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-6 flex items-center justify-between">
+        <h3 className="text-xs font-bold uppercase tracking-[0.3em] text-gray-400">{title}</h3>
+        <span className="rounded-full bg-gray-100 px-3 py-1 text-[10px] font-semibold uppercase text-gray-500">
+          30 días
+        </span>
+      </div>
       {children}
     </div>
   );
@@ -404,30 +288,8 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
 
 function LoadingSpinner() {
   return (
-    <div
-      style={{
-        height: 280,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <div
-        style={{
-          width: 40,
-          height: 40,
-          border: "4px solid #E5E7EB",
-          borderTop: "4px solid #DC2626",
-          borderRadius: "50%",
-          animation: "spin 1s linear infinite",
-        }}
-      />
-      <style>{`
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-      `}</style>
+    <div className="flex h-[260px] items-center justify-center">
+      <div className="h-10 w-10 animate-spin rounded-full border-4 border-gray-200 border-t-red-600" />
     </div>
   );
 }
@@ -441,7 +303,7 @@ function ResultadosChart({
 
   if (total === 0) {
     return (
-      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+      <div className="flex h-[260px] items-center justify-center text-sm font-semibold text-gray-400">
         Sin datos disponibles
       </div>
     );
@@ -456,33 +318,24 @@ function ResultadosChart({
   const max = Math.max(...data.map((d) => d.value), 1);
 
   return (
-    <div style={{ height: 280, display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 20, padding: "0 20px" }}>
+    <div className="flex h-[260px] flex-col gap-6">
+      <div className="flex flex-1 items-end gap-6 px-4">
         {data.map((d, idx) => {
           const heightPercent = (d.value / max) * 100;
           return (
-            <div key={idx} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <div key={idx} className="flex flex-1 flex-col items-center">
               <div
+                className="flex w-full items-center justify-center rounded-t-2xl text-white shadow-lg"
                 style={{
-                  width: "100%",
-                  height: `${Math.max(heightPercent, 5)}%`,
+                  height: `${Math.max(heightPercent, 8)}%`,
                   background: d.color,
-                  borderRadius: "8px 8px 0 0",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "white",
-                  fontWeight: 900,
-                  fontSize: 24,
                   minHeight: 60,
                 }}
               >
-                {d.value}
+                <span className="text-2xl font-black">{d.value}</span>
               </div>
-              <div style={{ marginTop: 12, fontSize: 13, fontWeight: 700, color: "#374151", textAlign: "center" }}>
-                {d.label}
-              </div>
-              <div style={{ fontSize: 11, color: "#9CA3AF" }}>
+              <div className="mt-3 text-xs font-bold text-gray-700">{d.label}</div>
+              <div className="text-[10px] font-semibold text-gray-400">
                 {((d.value / total) * 100).toFixed(1)}%
               </div>
             </div>
@@ -500,7 +353,7 @@ function CumplimientoChart({
 }) {
   if (cumplimiento.total === 0) {
     return (
-      <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", color: "#9CA3AF", fontSize: 14, fontWeight: 600 }}>
+      <div className="flex h-[260px] items-center justify-center text-sm font-semibold text-gray-400">
         Sin datos disponibles
       </div>
     );
@@ -512,7 +365,7 @@ function CumplimientoChart({
   const dashOffset = circumference - (tasaCumplimiento / 100) * circumference;
 
   return (
-    <div style={{ height: 280, display: "flex", alignItems: "center", justifyContent: "center", gap: 40 }}>
+    <div className="flex h-[260px] items-center justify-center gap-10">
       <svg width="180" height="180">
         <circle cx="90" cy="90" r={radius} fill="none" stroke="#F3F4F6" strokeWidth="20" />
         <circle
@@ -535,18 +388,18 @@ function CumplimientoChart({
         </text>
       </svg>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-4">
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Realizadas</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "#10B981" }}>{cumplimiento.realizadas}</div>
+          <div className="text-xs font-semibold text-gray-500">Realizadas</div>
+          <div className="text-3xl font-black text-emerald-500">{cumplimiento.realizadas}</div>
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Vencidas</div>
-          <div style={{ fontSize: 28, fontWeight: 900, color: "#DC2626" }}>{cumplimiento.vencidas}</div>
+          <div className="text-xs font-semibold text-gray-500">Vencidas</div>
+          <div className="text-3xl font-black text-red-600">{cumplimiento.vencidas}</div>
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>Total</div>
-          <div style={{ fontSize: 24, fontWeight: 900, color: "#111827" }}>{cumplimiento.total}</div>
+          <div className="text-xs font-semibold text-gray-500">Total</div>
+          <div className="text-2xl font-black text-gray-900">{cumplimiento.total}</div>
         </div>
       </div>
     </div>
