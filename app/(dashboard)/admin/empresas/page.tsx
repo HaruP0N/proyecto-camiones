@@ -166,8 +166,8 @@ export default function AdminEmpresasPage() {
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <button type="button" onClick={() => setCreating(!creating)} className="rounded-full bg-gray-900 px-4 py-2 text-sm font-bold text-white">{creating ? "Cerrar registro" : "Nueva empresa"}</button>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex shrink-0 items-center gap-2">
           <Link
             href="/admin"
             className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -175,21 +175,24 @@ export default function AdminEmpresasPage() {
             <ArrowLeft className="h-4 w-4" />
             Volver
           </Link>
+          <button type="button" onClick={() => setCreating(!creating)} className="h-10 whitespace-nowrap rounded-full bg-gray-900 px-4 text-sm font-bold text-white">{creating ? "Cerrar registro" : "Nueva empresa"}</button>
+          </div>
 
-          <div className="flex items-center gap-3">
-            <div className="relative">
+          <div className="flex min-w-0 flex-1 items-center gap-2 lg:max-w-xl">
+            <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar empresa, RUT o contacto..."
-                className="h-10 w-80 rounded-full border border-gray-200 bg-white pl-9 pr-4 text-sm font-medium text-gray-700 focus:border-red-300 focus:outline-none"
+                aria-label="Buscar empresas"
+                className="h-10 w-full rounded-full border border-gray-200 bg-white pl-9 pr-4 text-sm font-medium text-gray-700 focus:border-red-300 focus:outline-none"
               />
             </div>
             <button
               onClick={load}
               disabled={loading}
-              className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-gray-200 bg-white px-4 text-sm font-semibold text-gray-700 hover:bg-gray-50"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               {loading ? "Cargando" : "Refrescar"}
@@ -259,17 +262,17 @@ export default function AdminEmpresasPage() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="flex items-start justify-between">
-                  <div>
+                <div className="flex flex-col gap-4 2xl:flex-row 2xl:items-start 2xl:justify-between">
+                  <div className="min-w-0">
                     <div className="text-xs font-semibold uppercase tracking-[0.3em] text-gray-400">Detalle</div>
-                    <div className="mt-1 text-2xl font-black text-gray-900">
+                    <div className="mt-1 break-words text-2xl font-black text-gray-900">
                       {selected.nombre || "Empresa"}
                     </div>
                     <div className="mt-1 text-sm text-gray-500">
                       ID #{selected.id} · RUT {selected.rut || "—"}
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2">
                     <button
                       disabled={!dirty || saving}
                       onClick={() => guardar(selected.id)}
@@ -293,7 +296,7 @@ export default function AdminEmpresasPage() {
                   </div>
                 ) : null}
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label htmlFor="empresa-nombre" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Nombre</label>
                     <input
