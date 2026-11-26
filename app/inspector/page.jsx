@@ -116,7 +116,7 @@ export default function Dashboard() {
     localStorage.removeItem('patente_sistema');
     localStorage.removeItem('tipo_camion');
     localStorage.removeItem('carroceria_camion');
-    router.replace('/inspector/login');
+    router.replace('/login');
   };
 
   const handleProfileSave = () => {

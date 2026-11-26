@@ -1,3 +1,4 @@
+import { uploadPhoto } from "@/lib/storage";
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/database";
 import { requireCliente } from "@/lib/shared/security/cliente-auth";
@@ -5,6 +6,7 @@ import { requireCliente } from "@/lib/shared/security/cliente-auth";
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  if ((req.headers.get("content-type") || "").includes("multipart/form-data")) return uploadPhoto(req, true);
   try {
     const cliente = requireCliente(req);
     if (!cliente) return NextResponse.json({ error: "No autorizado" }, { status: 401 });

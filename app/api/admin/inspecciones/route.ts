@@ -1,3 +1,4 @@
+import { normalizeSchedule } from "@/lib/inspection/schedule";
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, Transaction } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
@@ -155,7 +156,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Datos inválidos" }, { status: 400 });
     }
 
-    const { camionId, inspectorId, fechaProgramada, observaciones } = parsed.data;
+    const { camionId, inspectorId, observaciones } = parsed.data;
+    const fechaProgramada = normalizeSchedule(parsed.data.fechaProgramada);
+    if (!fechaProgramada) return NextResponse.json({ ok: false, error: "Selecciona una fecha de inspección válida" }, { status: 400 });
 
     const pool = await getPool();
     const trans = new Transaction(pool);
@@ -164,6 +167,23 @@ export async function POST(req: NextRequest) {
       await trans.begin();
       const reqTrans = trans.request();
 
+      const valid = await trans.request().input("fecha", fechaProgramada).query("SELECT CAST(@fecha AS date) >= CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date) AS valid");
+      if (!valid.recordset[0]?.valid) {
+        await trans.rollback();
+        return NextResponse.json({ ok: false, error: "La fecha debe ser hoy o posterior" }, { status: 400 });
+      }
+      const truck = await trans.request().input("id", camionId).query("SELECT id FROM camiones WHERE id=@id FOR UPDATE");
+      if (!truck.recordset.length) {
+        await trans.rollback();
+        return NextResponse.json({ ok: false, error: "Camión no encontrado" }, { status: 404 });
+      }
+      if (inspectorId != null) {
+        const inspector = await trans.request().input("id", inspectorId).query("SELECT id FROM usuarios WHERE id=@id AND activo=TRUE AND rol='inspector'");
+        if (!inspector.recordset.length) {
+          await trans.rollback();
+          return NextResponse.json({ ok: false, error: "Inspector no existe o no está activo" }, { status: 400 });
+        }
+      }
       // 2. Verificar duplicados
       const check = await reqTrans
         .input("checkCamionId", camionId)

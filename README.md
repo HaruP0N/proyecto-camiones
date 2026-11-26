@@ -1,6 +1,6 @@
 # Petran Inspect — proyecto camiones
 
-Aplicación Next.js para empresas, flotas e inspecciones. La base de datos es PostgreSQL en Supabase. Las fotos continúan almacenándose en Cloudinary y el inspector conserva su funcionamiento sin conexión mediante IndexedDB.
+Aplicación Next.js para empresas, flotas e inspecciones. La base de datos es PostgreSQL en Supabase. Las fotos se guardan en un bucket privado de Supabase Storage y el inspector conserva su funcionamiento sin conexión mediante IndexedDB.
 
 ## Estado de la migración
 
@@ -14,7 +14,7 @@ Las relaciones son empresa → proveedores → camiones → inspecciones → det
 
 ## Conexión de la aplicación
 
-Requisitos: Node.js 22 o 24 LTS, un proyecto Supabase con el esquema aplicado y una cuenta Cloudinary para las fotografías.
+Requisitos: Node.js 22 o 24 LTS, un proyecto Supabase con el esquema aplicado y Supabase Storage para las fotografías.
 
 1. Ejecutar `npm ci`.
 2. Copiar `.env.example` a `.env.local` y completar sus valores sin subir ese archivo a GitHub.
@@ -23,7 +23,7 @@ Requisitos: Node.js 22 o 24 LTS, un proyecto Supabase con el esquema aplicado y 
 5. Guardar la URL completa en `DATABASE_URL`, con el usuario `petran_app.<project-ref>` para el pooler y la contraseña codificada como componente de URL. Nunca usar `NEXT_PUBLIC_DATABASE_URL` ni publicar la URL en el navegador.
 6. La conexión remota exige TLS con verificación del certificado. Si corresponde, guardar la CA PEM en `DATABASE_SSL_CA`; también se admiten saltos de línea representados por `\n`. No desactivar la verificación TLS.
 7. Generar valores aleatorios distintos de al menos 32 bytes para `ADMIN_JWT_SECRET` y `CLIENTE_JWT_SECRET`.
-8. Configurar Cloudinary con las variables del ejemplo. Dejar `NEXT_PUBLIC_API_BASE` vacío cuando la API y el sitio usan el mismo dominio.
+8. Configurar `SUPABASE_URL` y `SUPABASE_SECRET_KEY` solo en servidor. Crear el bucket privado `petran-images`, límite 3 MB y tipos `image/jpeg`, `image/png`, `image/webp`. Dejar `NEXT_PUBLIC_API_BASE` vacío cuando la API y el sitio usan el mismo dominio.
 9. Ejecutar `npm run db:check`, después `npm run dev`.
 
 Documentación: [conexiones PostgreSQL de Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres), [roles y privilegios](https://supabase.com/docs/guides/database/postgres/roles).
@@ -34,15 +34,23 @@ En el proyecto actual ya se importaron el administrador y el inspector del respa
 
 Solo para una instalación nueva sin usuarios: Definir temporalmente `SETUP_ADMIN_EMAIL` y `SETUP_ADMIN_PASSWORD` en `.env.local`; la contraseña debe tener al menos 12 caracteres. Ejecutar `npm run db:create-admin` y eliminar ambas variables después. El script guarda solamente el hash bcrypt y nunca reemplaza la contraseña de un usuario existente.
 
-Después se pueden crear inspectores desde la interfaz de administración. Las empresas se registran con RUT y PIN desde el flujo de clientes.
+Después se pueden crear inspectores desde la interfaz de administración. Las empresas se registran con RUT y PIN desde el flujo de clientes o desde **Admin → Empresas → Nueva empresa**. El administrador puede editar datos y prioridades y abrir **Gestionar flota** para agregar camiones, modificarlos y subir sus fotos.
 
 La autenticación sigue usando las sesiones firmadas de Next.js; esta migración no cambia los usuarios a Supabase Auth. El backend valida el rol y la empresa antes de ejecutar consultas. Las nueve tablas tienen RLS y una política para `petran_backend`; los roles de navegador `anon` y `authenticated` carecen de acceso a las tablas. Por eso no se necesita ninguna clave `service_role` en el frontend.
 
 ## Vercel
 
-Configurar las variables privadas `DATABASE_URL`, `ADMIN_JWT_SECRET` y `CLIENTE_JWT_SECRET`, junto con Cloudinary, en los entornos donde se desplegará la aplicación. Conectar Supabase al chat permite administrar su base; no configura automáticamente las variables de Vercel.
+Configurar las variables privadas `DATABASE_URL`, `ADMIN_JWT_SECRET` y `CLIENTE_JWT_SECRET`, junto con `SUPABASE_URL` y `SUPABASE_SECRET_KEY`, en los entornos donde se desplegará la aplicación. Conectar Supabase al chat permite administrar su base; no configura automáticamente las variables de Vercel.
 
 Aplicar primero las migraciones pendientes, comprobar la conexión y desplegar la rama que contiene la adaptación PostgreSQL. No publicar la versión anterior de Azure SQL apuntando a esta base: utiliza otro controlador y otro dialecto SQL.
+
+## Acceso y agenda
+
+`/login` es el único acceso de personal (pantalla blanca). Los accesos anteriores redirigen allí. Cada rol abre su panel correspondiente y el cierre de sesión vuelve al mismo formulario.
+
+La agenda se valida por día en `America/Santiago`: hoy y días posteriores son válidos. Se aceptan fecha sola y hora local con o sin segundos. **Sin agenda** significa sin inspección programada activa; para cambiar una cita se usa **Reagendar** desde **Programadas** o **Vencidas**.
+
+Las fotografías se suben como archivos reales al bucket privado, sin acceso público. `/api/media/...` verifica empresa o asignación del inspector antes de servirlas. El inspector conserva las evidencias en su cola local si falla una subida y reintenta después. La clave privada nunca se entrega al navegador.
 
 ## Verificaciones
 

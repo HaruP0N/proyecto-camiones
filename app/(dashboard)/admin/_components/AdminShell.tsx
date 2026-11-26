@@ -9,10 +9,7 @@ import {
   ClipboardList,
   Users,
   ChevronDown,
-  Inbox,
-  Pencil,
   LogOut,
-  HelpCircle,
 } from "lucide-react";
 
 export default function AdminShell({
@@ -57,11 +54,6 @@ export default function AdminShell({
     };
   }, [openUser]);
 
-  function go(href: string) {
-    setOpenUser(false);
-    router.push(href);
-  }
-
   async function logout() {
     setOpenUser(false);
     try {
@@ -69,15 +61,10 @@ export default function AdminShell({
     } catch {
       // Continuar con la redireccion aunque falle
     }
-    window.location.href = "/";
+    window.location.href = "/login";
   }
 
-  const userMenu = [
-    { label: "Mi perfil", icon: Users, onClick: () => go("/admin/perfil") },
-    { label: "Editar perfil", icon: Pencil, onClick: () => go("/admin/perfil/editar") },
-    { label: "Imbox", icon: Inbox, onClick: () => go("/admin/imbox") },
-    { label: "Help", icon: HelpCircle, onClick: () => go("/admin/help") },
-  ];
+
 
   return (
     <div className="min-h-screen bg-[#0b0f1a] text-white">
@@ -192,21 +179,6 @@ export default function AdminShell({
                         <div className="text-sm font-bold">Usuario</div>
                         <div className="text-xs font-semibold text-gray-500">Admin</div>
                       </div>
-
-                      {userMenu.map((m) => {
-                        const Icon = m.icon;
-                        return (
-                          <button
-                            key={m.label}
-                            type="button"
-                            onClick={m.onClick}
-                            className="flex w-full items-center gap-3 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                          >
-                            <Icon className="h-4 w-4" />
-                            {m.label}
-                          </button>
-                        );
-                      })}
 
                       <div className="h-px bg-gray-200" />
 

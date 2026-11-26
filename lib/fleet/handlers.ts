@@ -1,0 +1,278 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getPool, Transaction } from "@/lib/database";
+import { requireCliente } from "@/lib/shared/security/cliente-auth";
+
+import { requireAdmin } from "@/lib/shared/security/staff-auth";
+
+function fleetCompany(req: NextRequest, adminEmpresaId?: number) {
+  if (adminEmpresaId !== undefined) {
+    return requireAdmin(req) && Number.isSafeInteger(adminEmpresaId) && adminEmpresaId > 0 ? adminEmpresaId : null;
+  }
+  return requireCliente(req)?.empresaId ?? null;
+}
+
+const ALLOWED_CARROCERIAS = new Set([
+  "camion_con_carro",
+  "carro_reefer",
+  "camara_de_frio",
+  "camion_paquetero",
+  "camion_carro_paquetero",
+]);
+
+function normalizePatente(p: string) {
+  return String(p || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/* ======================================================
+   POST /api/fleet
+   - { camiones: [...] }
+   ====================================================== */
+export async function POST(req: NextRequest, adminEmpresaId?: number) {
+  try {
+    const companyId = fleetCompany(req, adminEmpresaId);
+    if (!companyId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+    const body = await req.json().catch(() => null);
+
+    const camiones = Array.isArray(body?.camiones) ? body.camiones : null;
+    if (!camiones || camiones.length === 0) {
+      return NextResponse.json({ error: "camiones es requerido" }, { status: 400 });
+    }
+
+    const items: Array<{
+      patente: string;
+      carroceria: string;
+      marca: string | null;
+      modelo: string | null;
+      anio: number | null;
+      tipo: string;
+    }> = [];
+
+    for (const t of camiones) {
+      const patente = normalizePatente(t?.patente);
+      if (!patente) continue;
+
+      const carroceria = String(t?.carroceria || "").toLowerCase();
+      if (!ALLOWED_CARROCERIAS.has(carroceria)) {
+        return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 });
+      }
+
+      if (t?.tipo && !["camion", "acople"].includes(t.tipo)) {
+        return NextResponse.json({ error: "Tipo de camión inválido" }, { status: 400 });
+      }
+      const anioNum = t?.anio === "" || t?.anio == null ? NaN : Number(t.anio);
+      if (t?.anio !== "" && t?.anio != null && (!Number.isInteger(anioNum) || anioNum < 1900 || anioNum > 2200)) {
+        return NextResponse.json({ error: "Año inválido" }, { status: 400 });
+      }
+      items.push({
+        patente,
+        carroceria,
+        marca: t?.marca ? String(t.marca).trim() : null,
+        modelo: t?.modelo ? String(t.modelo).trim() : null,
+        anio: Number.isInteger(anioNum) ? anioNum : null,
+        tipo: String(t?.tipo || "camion"),
+      });
+    }
+
+    if (items.length === 0) {
+      return NextResponse.json({ error: "camiones es requerido" }, { status: 400 });
+    }
+
+    const pool = await getPool();
+    const empresaId = Number(companyId);
+
+    const tx = new Transaction(pool);
+    await tx.begin();
+    try {
+      // Serialize supplier creation and batch writes within the owning company.
+      await tx.request().input("empresaId", empresaId).query('SELECT id FROM public.empresas WHERE id = @empresaId FOR UPDATE');
+    // --- proveedor default por empresa (desde cookie) ---
+    const provRes = await tx
+      .request()
+      .input("empresa_id", empresaId)
+      .query(`
+        SELECT id
+        FROM proveedores
+        WHERE empresa_id = @empresa_id
+        ORDER BY created_at DESC
+       LIMIT 1`);
+
+    let proveedorId: number | null = provRes.recordset?.[0]?.id ?? null;
+
+    if (!proveedorId) {
+      const createProv = await tx
+        .request()
+        .input("empresa_id", empresaId)
+        .input("nombre", "Proveedor (auto)")
+        .input("tipo_transportista", "no_licitado")
+        .input("tipo_entidad", "empresa")
+        .query(`
+          INSERT INTO proveedores (empresa_id, nombre, tipo_transportista, tipo_entidad)
+          VALUES (@empresa_id, @nombre, @tipo_transportista, @tipo_entidad) RETURNING id
+`);
+      proveedorId = createProv.recordset[0].id;
+    }
+
+    const duplicates: string[] = [];
+    const insertedTrucks: Array<{ id: number; patente: string }> = [];
+
+    for (const t of items) {
+      const exists = await tx
+        .request()
+        .input("proveedor_id", proveedorId)
+        .input("patente", t.patente)
+        .query(`
+          SELECT id
+          FROM camiones
+          WHERE proveedor_id = @proveedor_id AND patente = @patente
+         LIMIT 1`);
+
+      if (exists.recordset.length > 0) {
+        duplicates.push(t.patente);
+        continue;
+      }
+
+      const ins = await tx
+        .request()
+        .input("proveedor_id", proveedorId)
+        .input("patente", t.patente)
+        .input("marca", t.marca)
+        .input("modelo", t.modelo)
+        .input("anio", t.anio)
+        .input("tipo", t.tipo || "camion")
+        .input("carroceria", t.carroceria)
+        .query(`
+          INSERT INTO camiones (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
+          VALUES (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria) ON CONFLICT DO NOTHING RETURNING id, patente
+`);
+
+      if (!ins.recordset.length) { duplicates.push(t.patente); continue; }
+      insertedTrucks.push({ id: ins.recordset[0].id, patente: ins.recordset[0].patente });
+    }
+
+    await tx.commit();
+    return NextResponse.json({
+      success: true,
+      proveedorId,
+      insertedCount: insertedTrucks.length,
+      insertedTrucks,
+      duplicates,
+    });
+    } catch (error) { await tx.rollback(); throw error; }
+
+  } catch (e) {
+    console.error("[fleet][POST] error:", e);
+    return NextResponse.json({ error: "Error al registrar flota" }, { status: 500 });
+  }
+}
+
+/* ======================================================
+   PUT /api/fleet
+   - { truckId, marca, modelo, anio, carroceria }
+   ====================================================== */
+export async function PUT(req: NextRequest, adminEmpresaId?: number) {
+  try {
+    const companyId = fleetCompany(req, adminEmpresaId);
+    if (!companyId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+    const body = await req.json().catch(() => null);
+
+    const truckId = Number(body?.truckId);
+    if (!truckId || Number.isNaN(truckId)) {
+      return NextResponse.json({ error: "truckId es requerido" }, { status: 400 });
+    }
+
+    const carroceria = body?.carroceria ? String(body.carroceria).toLowerCase() : null;
+    if (carroceria && !ALLOWED_CARROCERIAS.has(carroceria)) {
+      return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 });
+    }
+
+    const marca = body?.marca ? String(body.marca).trim() : null;
+    const modelo = body?.modelo ? String(body.modelo).trim() : null;
+    const anioNum = body?.anio === "" || body?.anio == null ? NaN : Number(body.anio);
+    if (body?.anio !== "" && body?.anio != null && (!Number.isInteger(anioNum) || anioNum < 1900 || anioNum > 2200)) {
+      return NextResponse.json({ error: "Año inválido" }, { status: 400 });
+    }
+    const anio = Number.isInteger(anioNum) ? anioNum : null;
+
+    const pool = await getPool();
+    const empresaId = Number(companyId);
+
+    // ✅ verificar pertenencia del camión a la empresa del cliente
+    const owns = await pool
+      .request()
+      .input("truckId", truckId)
+      .input("empresaId", empresaId)
+      .query(`
+        SELECT c.id
+        FROM camiones c
+        INNER JOIN proveedores p ON p.id = c.proveedor_id
+        WHERE c.id = @truckId
+          AND p.empresa_id = @empresaId
+       LIMIT 1`);
+
+    if (owns.recordset.length === 0) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+
+    await pool
+      .request()
+      .input("id", truckId)
+      .input("marca", marca)
+      .input("modelo", modelo)
+      .input("anio", anio)
+      .input("carroceria", carroceria)
+      .query(`
+        UPDATE camiones
+        SET
+          marca = @marca,
+          modelo = @modelo,
+          anio = @anio,
+          carroceria = COALESCE(@carroceria, carroceria)
+        WHERE id = @id
+      `);
+
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    console.error("[fleet][PUT] error:", e);
+    return NextResponse.json({ error: "Error al actualizar camión" }, { status: 500 });
+  }
+}
+
+/* ======================================================
+   GET /api/fleet
+   - Lista camiones de la empresa del cliente (cookie)
+   ====================================================== */
+export async function GET(req: NextRequest, adminEmpresaId?: number) {
+  try {
+    const companyId = fleetCompany(req, adminEmpresaId);
+    if (!companyId) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+
+    const pool = await getPool();
+    const empresaId = Number(companyId);
+
+    const result = await pool
+      .request()
+      .input("empresa_id", empresaId)
+      .query(`
+        SELECT
+          c.id,
+          c.patente,
+          c.marca,
+          c.modelo,
+          c.anio,
+          c.carroceria,
+          cf.url AS foto_url
+        FROM camiones c
+        INNER JOIN proveedores p ON p.id = c.proveedor_id
+        LEFT JOIN camion_fotos cf ON cf.camion_id = c.id
+        WHERE p.empresa_id = @empresa_id
+        ORDER BY c.created_at DESC
+      `);
+
+    return NextResponse.json({ success: true, trucks: result.recordset });
+  } catch (e) {
+    console.error("[fleet][GET] error:", e);
+    return NextResponse.json({ error: "Error al obtener camiones" }, { status: 500 });
+  }
+}

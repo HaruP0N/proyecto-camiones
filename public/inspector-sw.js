@@ -1,9 +1,9 @@
-const CACHE_NAME = "petran-inspector-v1";
+const CACHE_NAME = "petran-inspector-v2";
 const RUNTIME_CACHE = "petran-inspector-runtime";
 
 const PRECACHE_URLS = [
   "/inspector",
-  "/inspector/login",
+  "/login",
   "/inspector/validacion-identidad",
   "/inspector/inspeccion/criticos",
   "/inspector/inspeccion/operacion",

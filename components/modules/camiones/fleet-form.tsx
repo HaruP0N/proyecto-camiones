@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 
-type Carroceria = "CAMION_CON_CARRO" | "CARRO_REEFER" | "CAMARA_DE_FRIO" | "CAMION_PAQUETERO";
+type Carroceria = "CAMION_CON_CARRO" | "CARRO_REEFER" | "CAMARA_DE_FRIO" | "CAMION_PAQUETERO" | "CAMION_CARRO_PAQUETERO";
 
 type ExistingTruck = {
   id: number;
@@ -43,6 +43,7 @@ const CARROCERIAS: { value: Carroceria; label: string }[] = [
   { value: "CARRO_REEFER", label: "Carro reefer" },
   { value: "CAMARA_DE_FRIO", label: "Cámara de frío" },
   { value: "CAMION_PAQUETERO", label: "Camión paquetero" },
+  { value: "CAMION_CARRO_PAQUETERO", label: "Camión con carro paquetero" },
 ];
 
 function normalizePatente(x: string) {
@@ -57,7 +58,8 @@ function parseYearOrNull(s: string): number | null {
   return n;
 }
 
-export function FleetForm() {
+export function FleetForm({ adminEmpresaId }: { adminEmpresaId?: number }) {
+  const fleetEndpoint = adminEmpresaId ? `/api/admin/empresas/${adminEmpresaId}/flota` : "/api/fleet";
   const router = useRouter();
   const { toast } = useToast();
 
@@ -87,6 +89,11 @@ export function FleetForm() {
 
   // ✅ 1) Cargar empresaId desde cookie
   useEffect(() => {
+    if (adminEmpresaId) {
+      setEmpresaId(adminEmpresaId);
+      setLoadingEmpresa(false);
+      return;
+    }
     (async () => {
       try {
         setLoadingEmpresa(true);
@@ -110,15 +117,15 @@ export function FleetForm() {
         setLoadingEmpresa(false);
       }
     })();
-  }, [router, toast]);
+  }, [router, toast, adminEmpresaId]);
 
   const loadExisting = async (eid: number) => {
     try {
       setLoadingExisting(true);
-      const res = await fetch(`/api/fleet?empresaId=${eid}`);
+      const res = await fetch(fleetEndpoint);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Error al cargar camiones");
-      setExisting(data?.trucks ?? []);
+      setExisting((data?.trucks ?? []).map((t: ExistingTruck) => ({ ...t, carroceria: t.carroceria?.toUpperCase() as Carroceria })));
     } catch (e) {
       toast({
         title: "Error",
@@ -161,7 +168,7 @@ export function FleetForm() {
     const existingInDB = new Set(existing.map((t) => normalizePatente(t.patente)));
     const existingInForm = new Set(rows.map((r) => normalizePatente(r.patente)));
 
-    const toAdd = patentes.filter((p) => !existingInForm.has(p));
+    const toAdd = [...new Set(patentes)].filter((p) => !existingInForm.has(p));
     const alreadyDB = toAdd.filter((p) => existingInDB.has(p));
     const reallyNew = toAdd.filter((p) => !existingInDB.has(p));
 
@@ -267,7 +274,7 @@ export function FleetForm() {
     return null;
   };
 
-  // --- guardar nuevos camiones + fotos placeholder ---
+  // Guardar nuevos camiones y sus imágenes reales.
   const handleSaveNew = async () => {
     const err = validate();
     if (err) {
@@ -281,7 +288,7 @@ export function FleetForm() {
         empresaId: Number(empresaId),
         camiones: rows.map((r) => ({
           patente: normalizePatente(r.patente),
-          carroceria: r.carroceria,
+          carroceria: r.carroceria.toLowerCase(),
           marca: r.marca.trim() || null,
           modelo: r.modelo.trim() || null,
           anio: r.anio ? Number(r.anio) : null,
@@ -289,7 +296,7 @@ export function FleetForm() {
         })),
       };
 
-      const res = await fetch("/api/fleet", {
+      const res = await fetch(fleetEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -306,12 +313,13 @@ export function FleetForm() {
         const photo = photoNewByPatente[key];
         if (!photo) continue;
 
-        const fakeUrl = `pending-upload://${key}`;
+        const form = new FormData();
+        form.append("camionId", String(it.id));
+        form.append("file", photo.file);
 
         const r2 = await fetch("/api/truck-photo", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ camionId: it.id, url: fakeUrl }),
+          body: form,
         });
         const d2 = await r2.json();
         if (!r2.ok) throw new Error(d2?.error || `Error guardando foto de ${key}`);
@@ -360,7 +368,7 @@ export function FleetForm() {
     const anio = parseYearOrNull(anioStr);
 
     try {
-      const res = await fetch("/api/fleet", {
+      const res = await fetch(fleetEndpoint, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -387,7 +395,7 @@ export function FleetForm() {
     }
   };
 
-  // --- guardar foto existente (placeholder) ---
+  // Subir y guardar la imagen del camión.
   const saveExistingPhoto = async (t: ExistingTruck) => {
     const photo = photoExisting[t.id];
     if (!photo) {
@@ -396,17 +404,18 @@ export function FleetForm() {
     }
 
     try {
-      const fakeUrl = `pending-upload://${normalizePatente(t.patente)}`;
+      const form = new FormData();
+      form.append("camionId", String(t.id));
+      form.append("file", photo.file);
 
       const res = await fetch("/api/truck-photo", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ camionId: t.id, url: fakeUrl }),
+        body: form,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "No se pudo guardar la foto");
 
-      toast({ title: "Foto registrada", description: `Foto guardada para ${t.patente} (placeholder).` });
+      toast({ title: "Foto registrada", description: `Foto guardada para ${t.patente}.` });
 
       if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
       setPhotoExisting((p) => {
@@ -428,7 +437,7 @@ export function FleetForm() {
   return (
     <div className="flex flex-col gap-6">
       {/* Volver al Inicio */}
-      <div className="flex items-center justify-between mb-4">
+      {!adminEmpresaId ? <div className="flex items-center justify-between mb-4">
         <Button variant="outline" onClick={() => router.push("/cliente")}>
           Volver al Inicio
         </Button>
@@ -448,11 +457,14 @@ export function FleetForm() {
         </Button>  
       </div>
 
+      : null}
+
+      <p className="text-sm text-gray-500">Fotos: JPG, PNG o WebP, máximo 3 MB.</p>
       {/* Camiones Registrados */}
       <div>
         <h2 className="text-lg font-semibold mb-2">Camiones Registrados</h2>
-        {/* Tabla para desktop */}
-        <div className="hidden md:block">
+        {/* Tabla editable */}
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
@@ -545,10 +557,10 @@ export function FleetForm() {
                         </Button>
                       </div>
 
-                      {photo ? (
+                      {photo || t.foto_url ? (
                         <div className="relative w-full h-32 rounded-md overflow-hidden border">
                           <Image
-                            src={photo.previewUrl}
+                            src={photo?.previewUrl || t.foto_url!}
                             alt={`Foto ${t.patente}`}
                             fill
                             className="object-contain bg-white"
@@ -582,39 +594,22 @@ export function FleetForm() {
             </tbody>
           </table>
         </div>
-        {/* Cards para mobile */}
-        <div className="block md:hidden space-y-3">
-          {existing.length === 0 ? (
-            <div className="text-muted-foreground text-sm">No hay camiones registrados.</div>
-          ) : (
-            existing.map((truck) => (
-              <Card key={truck.id}>
-                <CardHeader>
-                  <CardTitle>{truck.patente}</CardTitle>
-                  <CardDescription>
-                    {truck.marca || "-"} {truck.modelo || "-"} ({truck.anio || "-"})
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col gap-1">
-                    <span><b>Carrocería:</b> {truck.carroceria ? CARROCERIAS.find(c => c.value === truck.carroceria)?.label : "-"}</span>
-                    {/* Foto si existe */}
-                    {truck.foto_url && (
-                      <Image src={truck.foto_url} alt="Foto" width={80} height={60} className="rounded" />
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
       </div>
 
       {/* Nuevos Camiones */}
       <div>
         <h2 className="text-lg font-semibold mb-2">Nuevos Camiones</h2>
-        {/* Tabla para desktop */}
-        <div className="hidden md:block">
+        <div className="mb-4 grid gap-3 rounded-xl border p-4">
+          <label className="grid gap-2 text-sm font-medium">Patentes (una por línea)
+            <textarea value={paste} onChange={e => setPaste(e.target.value)} rows={3} className="rounded-lg border p-3" placeholder="ABCD12" />
+          </label>
+          <label className="grid gap-2 text-sm font-medium">Carrocería para nuevos camiones
+            <select value={defaultCarroceria} onChange={e => setDefaultCarroceria(e.target.value as Carroceria)} className="rounded-lg border p-3">{CARROCERIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</select>
+          </label>
+          <Button type="button" variant="outline" onClick={handleGenerateRows}>Agregar patentes</Button>
+        </div>
+        {/* Tabla editable */}
+        <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
@@ -712,42 +707,9 @@ export function FleetForm() {
             </tbody>
           </table>
         </div>
-        {/* Cards para mobile */}
-        <div className="block md:hidden space-y-3">
-          {rows.length === 0 ? (
-            <div className="text-muted-foreground text-sm">No hay nuevos camiones en el formulario.</div>
-          ) : (
-            rows.map((row, idx) => (
-              <Card key={row.patente}>
-                <CardHeader>
-                  <CardTitle>{row.patente}</CardTitle>
-                  <CardDescription>
-                    {row.marca || "-"} {row.modelo || "-"} ({row.anio || "-"})
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-col gap-1">
-                    <span><b>Carrocería:</b> {CARROCERIAS.find(c => c.value === row.carroceria)?.label}</span>
-                    {/* Foto si existe */}
-                    {photoNewByPatente[normalizePatente(row.patente)]?.previewUrl && (
-                      <Image src={photoNewByPatente[normalizePatente(row.patente)]!.previewUrl} alt="Foto" width={80} height={60} className="rounded" />
-                    )}
-                    {/* Acciones: editar/eliminar */}
-                    <div className="flex gap-2 mt-2">
-                      <Button size="sm" variant="outline" onClick={() => removeRow(idx)}>
-                        Eliminar
-                      </Button>
-                      {/* ...otros botones si los hay... */}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </div>
       </div>
 
-      {/* ...resto del formulario y lógica... */}
+      <Button type="button" onClick={handleSaveNew} disabled={saving || rows.length === 0}>{saving ? "Guardando camiones..." : "Guardar nuevos camiones"}</Button>
     </div>
   );
 }

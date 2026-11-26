@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Search, RefreshCw, ArrowLeft } from "lucide-react";
+import { EmpresaForm } from "@/components/modules/empresas/empresa-form";
+import { FleetForm } from "@/components/modules/camiones/fleet-form";
 import AdminShell from "../_components/AdminShell";
 
 type Empresa = {
@@ -12,6 +14,13 @@ type Empresa = {
   rubro: string;
   email_contacto: string;
   telefono_contacto: string;
+  direccion: string;
+  productos_transportados: string;
+  prioridad_frio: boolean;
+  prioridad_carroceria: boolean;
+  prioridad_estructura: boolean;
+  prioridad_camion: boolean;
+  prioridad_acople: boolean;
 };
 
 // helper: parse JSON sin romper si viene vacío o HTML
@@ -26,6 +35,9 @@ async function safeJson(res: Response) {
 }
 
 export default function AdminEmpresasPage() {
+  const [creating, setCreating] = useState(false);
+  const [showFleet, setShowFleet] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<Empresa[]>([]);
   const [edit, setEdit] = useState<Record<number, Partial<Empresa>>>({});
   const [loading, setLoading] = useState(false);
@@ -37,7 +49,6 @@ export default function AdminEmpresasPage() {
   async function load() {
     setLoading(true);
     setErr("");
-    setOk("");
     try {
       const r = await fetch("/api/admin/empresas", { cache: "no-store" });
       const j = await safeJson(r);
@@ -86,9 +97,9 @@ export default function AdminEmpresasPage() {
   const selected = items.find((it) => it.id === selectedId) || null;
   const selectedEdit = selected ? edit[selected.id] || {} : {};
   const dirty = selected ? Object.keys(selectedEdit).length > 0 : false;
-  const v = (k: keyof Empresa) => (selectedEdit[k] ?? selected?.[k]) ?? "";
+  const v = (k: keyof Empresa) => String((selectedEdit[k] ?? selected?.[k]) ?? "");
 
-  function updateField(id: number, key: keyof Empresa, value: string) {
+  function updateField(id: number, key: keyof Empresa, value: string | boolean) {
     setEdit((p) => ({ ...p, [id]: { ...p[id], [key]: value } }));
   }
 
@@ -96,6 +107,8 @@ export default function AdminEmpresasPage() {
     setErr("");
     setOk("");
     const patch = edit[id] || {};
+    if (!Object.keys(patch).length || saving) return;
+    setSaving(true);
 
     try {
       const r = await fetch(`/api/admin/empresas/${id}`, {
@@ -117,7 +130,7 @@ export default function AdminEmpresasPage() {
       await load();
     } catch (e: any) {
       setErr(e?.message || "Error");
-    }
+    } finally { setSaving(false); }
   }
 
   async function resetPin(id: number) {
@@ -153,7 +166,8 @@ export default function AdminEmpresasPage() {
           </div>
         ) : null}
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <button type="button" onClick={() => setCreating(!creating)} className="rounded-full bg-gray-900 px-4 py-2 text-sm font-bold text-white">{creating ? "Cerrar registro" : "Nueva empresa"}</button>
           <Link
             href="/admin"
             className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
@@ -183,7 +197,8 @@ export default function AdminEmpresasPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-[420px_minmax(0,1fr)] gap-6">
+        {creating ? <EmpresaForm onCreated={async (id) => { await load(); setSelectedId(id); setSearch(""); setCreating(false); setOk("Empresa creada. Ya puedes gestionar su flota."); }} /> : null}
+        <div className="grid grid-cols-1 xl:grid-cols-[360px_minmax(0,1fr)] gap-6">
           <div className="rounded-3xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -206,7 +221,7 @@ export default function AdminEmpresasPage() {
                     <button
                       key={it.id}
                       type="button"
-                      onClick={() => setSelectedId(it.id)}
+                      onClick={() => { setSelectedId(it.id); setShowFleet(false); }}
                       className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
                         active
                           ? "border-red-200 bg-red-50 shadow-sm"
@@ -256,11 +271,13 @@ export default function AdminEmpresasPage() {
                   </div>
                   <div className="flex gap-2">
                     <button
+                      disabled={!dirty || saving}
                       onClick={() => guardar(selected.id)}
                       className="rounded-full bg-gray-900 px-4 py-2 text-sm font-bold text-white shadow hover:bg-black"
                     >
-                      Guardar
+                      {saving ? "Guardando..." : "Guardar cambios"}
                     </button>
+                    <button type="button" onClick={() => setShowFleet(!showFleet)} className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700">{showFleet ? "Ocultar flota" : "Gestionar flota"}</button>
                     <button
                       onClick={() => resetPin(selected.id)}
                       className="rounded-full border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50"
@@ -278,46 +295,57 @@ export default function AdminEmpresasPage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Nombre</label>
+                    <label htmlFor="empresa-nombre" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Nombre</label>
                     <input
                       className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      id="empresa-nombre"
                       value={v("nombre")}
                       onChange={(e) => updateField(selected.id, "nombre", e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">RUT</label>
+                    <label htmlFor="empresa-rut" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">RUT</label>
                     <input
                       className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      id="empresa-rut"
                       value={v("rut")}
                       onChange={(e) => updateField(selected.id, "rut", e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Rubro</label>
+                    <label htmlFor="empresa-rubro" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Rubro</label>
                     <input
                       className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      id="empresa-rubro"
                       value={v("rubro")}
                       onChange={(e) => updateField(selected.id, "rubro", e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Email</label>
+                    <label htmlFor="empresa-email_contacto" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Email</label>
                     <input
                       className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      id="empresa-email_contacto"
                       value={v("email_contacto")}
                       onChange={(e) => updateField(selected.id, "email_contacto", e.target.value)}
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Teléfono</label>
+                    <label htmlFor="empresa-telefono_contacto" className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-400">Teléfono</label>
                     <input
                       className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm font-medium"
+                      id="empresa-telefono_contacto"
                       value={v("telefono_contacto")}
                       onChange={(e) => updateField(selected.id, "telefono_contacto", e.target.value)}
                     />
                   </div>
+                  <label className="text-xs font-semibold text-gray-500">Dirección
+                    <input className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" value={v("direccion")} onChange={(e) => updateField(selected.id, "direccion", e.target.value)} />
+                  </label>
                 </div>
+                <label className="block text-xs font-semibold text-gray-500">Productos transportados<input className="mt-2 h-11 w-full rounded-xl border border-gray-200 px-3 text-sm" value={v("productos_transportados")} onChange={e => updateField(selected.id, "productos_transportados", e.target.value)} /></label>
+                <fieldset><legend className="mb-2 text-sm font-semibold">Prioridades de inspección</legend><div className="flex flex-wrap gap-4">{([ ["prioridad_frio", "Frío"], ["prioridad_carroceria", "Carrocería"], ["prioridad_estructura", "Estructura"], ["prioridad_camion", "Camión"], ["prioridad_acople", "Acople"] ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={Boolean(selectedEdit[key] ?? selected[key])} onChange={e => updateField(selected.id, key, e.target.checked)} />{label}</label>)}</div></fieldset>
+                {showFleet ? <section className="border-t pt-6"><h3 className="mb-4 text-lg font-bold">Flota de {selected.nombre}</h3><FleetForm key={selected.id} adminEmpresaId={selected.id} /></section> : null}
               </div>
             )}
           </div>
