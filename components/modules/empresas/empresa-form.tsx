@@ -31,7 +31,7 @@ function isValidPin(pin: string) {
   return /^\d{4}$/.test(pin.trim());
 }
 
-export function EmpresaForm() {
+export function EmpresaForm({ onCreated }: { onCreated?: (id: number) => void }) {
   const router = useRouter();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,7 +73,7 @@ export function EmpresaForm() {
       if (!isValidPin(pin)) throw new Error("PIN inválido. Debe ser de 4 dígitos.");
 
       // 1) Crear empresa
-      const response = await fetch("/api/empresas", {
+      const response = await fetch(onCreated ? "/api/admin/empresas" : "/api/empresas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(formData),
@@ -93,7 +93,7 @@ export function EmpresaForm() {
             description: "Este RUT ya está registrado. Ingresa con tu RUT y PIN.",
             variant: "destructive",
           });
-          router.push("/cliente/ingresar");
+          if (!onCreated) router.push("/cliente/ingresar");
           return;
         }
 
@@ -104,6 +104,8 @@ export function EmpresaForm() {
         title: "Empresa registrada",
         description: `${formData.nombre} ha sido registrada exitosamente.`,
       });
+
+      if (onCreated) { onCreated(Number(result.id)); return; }
 
       // 2) Login automático (setea cookie petran_cliente)
       const loginRes = await fetch("/api/cliente/login", {

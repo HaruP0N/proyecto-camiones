@@ -1,8 +1,9 @@
 import { getPool, Transaction } from "../database";
 import { z } from "zod";
 
+const PhotoUrl = z.string().refine(value => /^\/api\/media\/empresas\/\d+\/camiones\/\d+\/[a-f0-9-]+\.(png|jpg|webp)$/.test(value) || /^https:\/\//.test(value));
 const Photo = z.object({
-  url: z.string().url().optional(),
+  url: PhotoUrl.optional(),
   base64: z.string().optional(),
   itemId: z.union([z.string(), z.number()]).optional(),
   nombreArchivo: z.string().optional(),
@@ -27,7 +28,7 @@ const Submission = z.object({
   respuestas: z.array(Answer).min(1).max(1000),
   notaFinal: z.number().min(0).max(100),
   observacionesGenerales: z.string().nullable().optional(),
-  fotos_evidencia: z.array(z.union([z.string().url(), Photo])).optional(),
+  fotos_evidencia: z.array(z.union([PhotoUrl, Photo])).optional(),
 });
 
 export class InspectionError extends Error {

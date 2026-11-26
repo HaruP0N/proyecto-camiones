@@ -17,8 +17,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Registro de Empresas - Azure SQL",
-  description: "Sistema de registro de empresas clientes con Azure SQL Database",
+  title: "Petran | Empresas e Inspecciones",
+  description: "Gestión de empresas, flotas e inspecciones Petran",
   generator: "v0.app",
   manifest: "/manifest.webmanifest",
   icons: {

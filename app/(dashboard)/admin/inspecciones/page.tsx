@@ -369,7 +369,7 @@ export default function AdminInspeccionesPage() {
         return;
       }
 
-      const fechaProgramada = `${fechaLocal}T09:00:00`;
+      const fechaProgramada = fechaLocal;
 
       const inspeccionId = selected.inspeccionProgramada?.id;
       const url = inspeccionId ? `/api/admin/inspecciones/${inspeccionId}` : "/api/admin/inspecciones";
@@ -743,6 +743,7 @@ export default function AdminInspeccionesPage() {
               </div>
             </div>
 
+            <p className="text-sm text-gray-600">Sin agenda: camiones sin una cita activa. Para cambiar una cita existente, abre Programadas o Vencidas y elige Reagendar. Puedes elegir el día de hoy.</p>
             <div className="flex gap-2">
               {(["SIN_AGENDA", "PROGRAMADA", "VENCIDA"] as const).map((t) => (
                 <button

@@ -31,7 +31,7 @@ interface PhotoUploadCloudinaryProps {
 export function PhotoUploadCloudinary({
   onPhotosChange,
   maxFiles = 5,
-  maxSizeMB = 10,
+  maxSizeMB = 3,
   tipo = "inspeccion",
   inspeccionId,
   camionId,
@@ -147,18 +147,7 @@ export function PhotoUploadCloudinary({
     const foto = fotos.find((f) => f.id === fotoId);
     if (!foto) return;
 
-    // Eliminar de Cloudinary
-    try {
-      await fetch("/api/inspector/fotos", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicId: foto.publicId }),
-      });
-    } catch (error) {
-      console.error("Error eliminando de Cloudinary:", error);
-      // Continuar con la eliminación local aunque falle en Cloudinary
-    }
-
+    // Remove from this draft; preserve stored evidence for its inspection history.
     // Actualizar estado local
     const updated = fotos.filter((f) => f.id !== fotoId);
     setFotos(updated);

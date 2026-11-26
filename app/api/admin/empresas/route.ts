@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
         email_contacto,
         telefono_contacto,
         direccion,
+        productos_transportados,
         prioridad_frio,
         prioridad_carroceria,
         prioridad_estructura,
@@ -36,4 +37,11 @@ export async function GET(req: NextRequest) {
     console.error("GET /api/admin/empresas error:", err);
     return NextResponse.json({ ok: false, error: "Error interno" }, { status: 500 });
   }
+}
+
+// Use the same registration rules for both entry points, with staff authorization here.
+export async function POST(req: NextRequest) {
+  if (!requireAdmin(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
+  const { POST: register } = await import("@/app/api/empresas/route");
+  return register(req);
 }

@@ -1,12 +1,9 @@
+import { normalizeSchedule } from "@/lib/inspection/schedule";
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
-
-function isValidDatetimeLocal(s: unknown) {
-  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s);
-}
 
 // parser robusto del id (params o pathname)
 function parseInspeccionId(req: NextRequest, params?: { id?: string }) {
@@ -82,7 +79,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
     // ✅ REAGENDAR
     if (action === "REAGENDAR") {
-      const fechaLocal = (body as any).fechaProgramada;
+      const fechaLocal = normalizeSchedule((body as any).fechaProgramada);
       const obs =
         typeof (body as any).observaciones === "string"
           ? (body as any).observaciones.trim()
@@ -94,14 +91,14 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           ? null
           : Number(inspectorIdRaw);
 
-      if (!isValidDatetimeLocal(fechaLocal)) {
-        return NextResponse.json({ ok: false, error: "fechaProgramada inválida" }, { status: 400 });
+      if (!fechaLocal) {
+        return NextResponse.json({ ok: false, error: "Selecciona una fecha de inspección válida" }, { status: 400 });
       }
       if (inspectorId !== null && (!Number.isInteger(inspectorId) || inspectorId <= 0)) {
         return NextResponse.json({ ok: false, error: "inspectorId inválido" }, { status: 400 });
       }
 
-      const fechaSql = `${String(fechaLocal).replace("T", " ")}:00`; // YYYY-MM-DD HH:mm:00
+      const fechaSql = fechaLocal; // YYYY-MM-DD HH:mm:00
 
       // Validar inspector si viene
       if (inspectorId !== null) {
@@ -126,10 +123,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
       // Interpretar datetime-local en Chile, independientemente del servidor.
       const validation = await pool.request().input("fecha", fechaSql).query(`
-        SELECT (CAST(@fecha AS timestamp) AT TIME ZONE 'America/Santiago') >= CURRENT_TIMESTAMP + INTERVAL '1 minute' AS valid
+        SELECT CAST(@fecha AS date) >= CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date) AS valid
       `);
       if (!validation.recordset[0]?.valid) {
-        return NextResponse.json({ ok: false, error: "La fecha debe ser futura" }, { status: 400 });
+        return NextResponse.json({ ok: false, error: "La fecha debe ser hoy o posterior" }, { status: 400 });
       }
 
       await pool

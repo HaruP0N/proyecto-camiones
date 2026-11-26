@@ -1,5 +1,5 @@
 import { Suspense } from "react"
-import { FleetForm } from "@/components/fleet-form"
+import { FleetForm } from "@/components/modules/camiones/fleet-form"
 
 export default function FlotaPage() {
   return (

@@ -142,21 +142,22 @@ export function TruckPhotosForm() {
         const photo = photosByTruckId[t.id];
         if (!photo) continue;
 
-        const fakeUrl = `pending-upload://${t.patente}`;
+        const form = new FormData();
+        form.append("camionId", String(t.id));
+        form.append("file", photo.file);
 
         const res = await fetch("/api/truck-photo", {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ camionId: t.id, url: fakeUrl }),
+          body: form,
         });
 
         const data = await res.json().catch(() => null);
         if (!res.ok) throw new Error(data?.error || `Error guardando foto de ${t.patente}`);
       }
 
-      toast({ title: "Listo", description: "Fotos registradas (pendiente subir a storage real)." });
-      router.push("/login");
+      toast({ title: "Listo", description: "Fotos guardadas." });
+      router.push("/cliente/flota");
     } catch (err) {
       toast({
         title: "Error",

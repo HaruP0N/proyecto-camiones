@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import type { Pool } from 'pg';
 import { bindParameters } from '../lib/database/parameters';
 import { connectionConfig } from '../lib/database';
+import { normalizeSchedule } from '../lib/inspection/schedule';
 import { SqlCamionRepository } from '../lib/infrastructure/repositories/SqlCamionRepository';
 
 test('named values stay parameterized and never change strings/comments', () => {
@@ -24,6 +25,11 @@ test('remote database connections always verify TLS certificates', () => {
   assert.equal(config.ssl && config.ssl.rejectUnauthorized, true);
   assert.ok(!config.connectionString.includes('sslmode'));
   delete process.env.DATABASE_URL;
+});
+
+test('schedule accepts date-only, minute and second precision and rejects impossible calendar dates', () => {
+  for (const value of ['2026-11-26', '2026-11-26T09:00', '2026-11-26T09:00:00']) assert.equal(normalizeSchedule(value), '2026-11-26T09:00:00');
+  for (const value of ['2026-02-30', '2026-11-26T25:00', '26/11/2026', '2026-11-26T12:60', '']) assert.equal(normalizeSchedule(value), null);
 });
 
 test('PostgreSQL schema and complete API workflow', async t => {
@@ -88,6 +94,11 @@ test('PostgreSQL schema and complete API workflow', async t => {
     await t.test('agenda filters, Chile dates, duplicate constraint and inspector reads', async () => {
       await invoke('admin/inspecciones', 'POST', admin, { camionId: truckId, inspectorId, fechaProgramada: `${chileToday}T10:00` });
       inspectionId = (await query('SELECT id FROM inspecciones WHERE camion_id=$1', [truckId])).rows[0].id as number;
+      for (const fechaProgramada of [chileToday, `${chileToday}T00:00`, `${chileToday}T09:00:00`]) {
+        await invoke('admin/inspecciones/[id]', 'PATCH', admin, { action: 'REAGENDAR', fechaProgramada, inspectorId }, inspectionId);
+        assert.equal((await invoke('inspector/inspecciones/hoy', 'GET', inspector)).json.data.length, 1);
+      }
+      await invoke('admin/inspecciones/[id]', 'PATCH', admin, { action: 'REAGENDAR', fechaProgramada: '2026-02-30', inspectorId }, inspectionId, '', 400);
       for (const estado of ['PROGRAMADA','VENCIDA','SIN_AGENDA']) {
         await invoke('admin/inspecciones', 'GET', admin, undefined, undefined, `?estado=${estado}&patente=ABC`);
         await invoke('admin/camiones', 'GET', admin, undefined, undefined, `?estado=${estado}&patente=ABCD12`);
@@ -152,12 +163,64 @@ test('PostgreSQL schema and complete API workflow', async t => {
       const created = await repo.create({ patente: 'NEW123', marca: 'Volvo', modelo: 'FH', anio: 2024, empresaId, estado: 'ACTIVO' });
       assert.equal(created.empresaId, empresaId);
     });
+    await t.test('admin company and fleet management stays scoped and validates real form values', async () => {
+      await invoke('admin/empresas', 'POST', inspector, { nombre: 'Denied', rut: 'denied', pin: '1234' }, undefined, '', 401);
+      const company = await invoke('admin/empresas', 'POST', admin, { nombre: 'Admin company', rut: '77.123.456-0', pin: '1234', direccion: 'Santiago' });
+      const eid = company.json.id;
+      await invoke('admin/empresas/[id]', 'PATCH', admin, { nombre: '' }, eid, '', 400);
+      await invoke('admin/empresas/[id]', 'PATCH', admin, { direccion: 'Nueva dirección', productos_transportados: 'Carga', prioridad_frio: true }, eid);
+      assert.equal((await query('SELECT prioridad_frio FROM empresas WHERE id=$1', [eid])).rows[0].prioridad_frio, true);
+      await invoke('admin/empresas/[id]/flota', 'GET', cliente, undefined, eid, '', 401);
+      await invoke('admin/empresas/[id]/flota', 'GET', inspector, undefined, eid, '', 401);
+      const added = await invoke('admin/empresas/[id]/flota', 'POST', admin, { camiones: [{ patente: 'ADMN12', carroceria: 'CAMION_PAQUETERO', anio: 2024 }] }, eid);
+      const tid = added.json.insertedTrucks[0].id;
+      assert.equal((await invoke('admin/empresas/[id]/flota', 'GET', admin, undefined, eid)).json.trucks[0].carroceria, 'camion_paquetero');
+      await invoke('admin/empresas/[id]/flota', 'PUT', admin, { truckId: tid, marca: 'Volvo', modelo: 'FH', anio: 2022, carroceria: 'CAMARA_DE_FRIO' }, eid);
+      await invoke('admin/empresas/[id]/flota', 'PUT', admin, { truckId, marca: 'Cross company' }, eid, '', 403);
+      await invoke('fleet', 'PUT', cliente, { truckId: tid, marca: 'Cross company' }, undefined, '', 403);
+      await invoke('fleet', 'PUT', cliente, { truckId, anio: 'invalid' }, undefined, '', 400);
+      await invoke('fleet', 'POST', cliente, { camiones: [{ patente: 'BAD123', carroceria: 'CAMARA_DE_FRIO', anio: 'invalid' }] }, undefined, '', 400);
+      await invoke('admin/inspecciones', 'POST', admin, { camionId: tid, fechaProgramada: '2000-01-01' }, undefined, '', 400);
+      await invoke('admin/inspecciones', 'POST', admin, { camionId: tid, fechaProgramada: chileToday });
+    });
+    await t.test('private photo uploads store actual bytes and deny cross-company reads', async () => {
+      const { POST } = await import('../app/api/truck-photo/route');
+      const { readPhoto } = await import('../lib/storage');
+      const nativeFetch = global.fetch;
+      process.env.SUPABASE_URL = 'https://storage.example.test';
+      process.env.SUPABASE_SECRET_KEY = 'test-private-key';
+      const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64');
+      const calls: string[] = [];
+      global.fetch = async (input, options) => {
+        calls.push(String(input));
+        if (options?.method === 'POST') {
+          assert.deepEqual(Buffer.from(options.body as Uint8Array), png);
+          return Response.json({ Key: 'stored' });
+        }
+        return new Response(png, { headers: { 'Content-Type': 'image/png' } });
+      };
+      try {
+        const form = new FormData(); form.append('camionId', String(truckId)); form.append('file', new File([png], 'qa.png', { type: 'image/png' }));
+        const result = await POST(new NextRequest('http://localhost/api/truck-photo', { method: 'POST', headers: { cookie: cliente }, body: form }));
+        assert.equal(result.status, 200);
+        const photo = await result.json();
+        assert.match(photo.data.url, /^\/api\/media\/empresas\//);
+        const path = photo.data.url.replace('/api/media/', '').split('/');
+        const media = await readPhoto(new NextRequest('http://localhost'+photo.data.url, { headers: { cookie: cliente } }), path);
+        assert.equal(media.status, 200);
+        assert.deepEqual(Buffer.from(await media.arrayBuffer()), png);
+        assert.equal(media.headers.get('cache-control'), 'private, no-store');
+        const denied = await readPhoto(new NextRequest('http://localhost'+photo.data.url), path);
+        assert.equal(denied.status, 403);
+        assert.equal(calls.length, 2);
+      } finally { global.fetch = nativeFetch; }
+    });
     await t.test('RLS and privileges deny browser roles access to sensitive tables', async () => {
       const tables = await query("SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname='public'");
       assert.equal(tables.rows.length, 9);
       assert.ok(tables.rows.every((r: any)=>r.rowsecurity));
       await db.exec('SET ROLE petran_backend');
-      assert.equal((await query('SELECT count(*)::int AS n FROM empresas')).rows[0].n, 1);
+      assert.equal((await query('SELECT count(*)::int AS n FROM empresas')).rows[0].n, 2);
       await assert.rejects(() => query('DELETE FROM usuarios'), /permission denied/);
       await db.exec('RESET ROLE');
       for (const role of ['anon','authenticated']) {

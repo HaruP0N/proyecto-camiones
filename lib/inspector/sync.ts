@@ -1,8 +1,6 @@
 import db from "@/lib/inspector/db";
 import { CATEGORIAS } from "@/lib/inspector/inspection-items";
 
-const CLOUDINARY_CLOUD_NAME = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-const CLOUDINARY_PRESET = process.env.NEXT_PUBLIC_CLOUDINARY_PRESET;
 const ENV_API_BASE = (process.env.NEXT_PUBLIC_API_BASE || "").replace(/\/$/, "");
 // En browser siempre usamos el mismo origen para evitar CORS
 const API_BASE =
@@ -11,7 +9,6 @@ const API_BASE =
     : ENV_API_BASE;
 const API_URL = API_BASE ? `${API_BASE}/api` : "/api";
 
-const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`;
 const MAX_INTENTOS = 5;
 
 let syncStarted = false;
@@ -49,7 +46,6 @@ export async function descargarAsignaciones() {
     const payload = await response.json();
     const tareasBackend = Array.isArray(payload?.data) ? payload.data : [];
 
-    if (tareasBackend.length === 0) return;
 
     await db.transaction("rw", db.inspecciones, async () => {
       for (const tarea of tareasBackend) {
@@ -208,7 +204,8 @@ async function sincronizarFoto(payload: { fotoId: number }) {
     }
 
     if (blob) {
-      urlPublica = await subirACloudinary(blob);
+      const inspection = await db.inspecciones.get(fotoRecord.inspeccion_id);
+      urlPublica = await subirFoto(blob, Number(inspection?.camion_id || inspection?.camionId));
     }
   }
 
@@ -274,7 +271,7 @@ async function sincronizarInspeccion(payload: { inspeccionId?: number; inspeccio
           blob = await dataUrlToBlob(foto.data_url);
         }
         if (blob) {
-          url = await subirACloudinary(blob);
+          url = await subirFoto(blob, Number(camionId));
           await db.fotos.update(foto.id, {
             blob: null,
             thumbnail_blob: null,
@@ -298,13 +295,14 @@ async function sincronizarInspeccion(payload: { inspeccionId?: number; inspeccio
         });
       }
     } catch (errFoto) {
-      console.error(`❌ Error subiendo foto ${foto.id}, se omitirá:`, errFoto);
-      // Continuar con la siguiente foto sin bloquear la inspección
-      continue;
+      console.error(`❌ Error subiendo foto ${foto.id}, queda pendiente de reintento:`, errFoto);
+      // Keep the inspection and its evidence queued until every photo is stored.
+      throw errFoto;
     }
   }
 
   const datosParaBackend = {
+    inspeccionId: inspeccion.id,
     respuestas,
     notaFinal: 0,
     observacionesGenerales: inspeccion.observaciones_generales || null,
@@ -321,47 +319,15 @@ async function sincronizarInspeccion(payload: { inspeccionId?: number; inspeccio
 // ==========================================
 // 4. FUNCIONES DE RED (FETCH)
 // ==========================================
-async function subirACloudinary(blob: Blob): Promise<string> {
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
-  const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_PRESET;
-
-  if (!cloudName || !uploadPreset) {
-    const error = `Cloudinary no configurado: cloudName=${cloudName}, preset=${uploadPreset}`;
-    console.error("❌", error);
-    throw new Error(error);
-  }
-
+async function subirFoto(blob: Blob, camionId: number): Promise<string> {
+  if (!camionId) throw new Error("No se pudo asociar la foto al camión");
   const formData = new FormData();
-  formData.append("file", blob);
-  formData.append("upload_preset", uploadPreset);
-  formData.append("folder", "inspecciones");
-
-  const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-  console.log("📤 Subiendo a Cloudinary:", { cloudName, uploadPreset, url });
-
-  try {
-    const response = await fetch(url, { method: "POST", body: formData });
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ Cloudinary HTTP Error:", {
-        status: response.status,
-        statusText: response.statusText,
-        body: errorText,
-      });
-      throw new Error(`Cloudinary Error (${response.status}): ${errorText}`);
-    }
-    const data = await response.json();
-    console.log("✅ Foto subida exitosamente:", data.secure_url);
-    return data.secure_url;
-  } catch (error: any) {
-    console.error("❌ Error completo subirACloudinary:", {
-      message: error?.message,
-      cloudName,
-      uploadPreset,
-      url,
-    });
-    throw new Error(`Error Cloudinary: ${error?.message || "desconocido"}`);
-  }
+  formData.append("file", blob, "evidencia.jpg");
+  formData.append("camionId", String(camionId));
+  const response = await fetch(`${API_URL}/inspector/fotos`, { method: "POST", body: formData, credentials: "include" });
+  const data = await response.json();
+  if (!response.ok || !data?.data?.url) throw new Error(data?.error || "No se pudo subir la foto");
+  return data.data.url;
 }
 
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {

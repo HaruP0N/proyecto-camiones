@@ -40,21 +40,21 @@ export async function proxy(req: NextRequest) {
     
     // Si no hay token, redirigir al home (login staff)
     if (!token) {
-      const loginUrl = new URL(pathname.startsWith("/inspector") ? "/inspector/login" : "/", req.url);
+      const loginUrl = new URL("/login", req.url);
       return NextResponse.redirect(loginUrl);
     }
 
     const secret = process.env.ADMIN_JWT_SECRET;
     if (!secret) {
       console.error("ERROR CRÍTICO: ADMIN_JWT_SECRET no definido en variables de entorno");
-      return NextResponse.redirect(new URL(pathname.startsWith("/inspector") ? "/inspector/login" : "/", req.url));
+      return NextResponse.redirect(new URL("/login", req.url));
     }
 
     const payload = await verifyJWT(token, secret);
 
     // Token inválido o expirado
     if (!payload) {
-      return NextResponse.redirect(new URL(pathname.startsWith("/inspector") ? "/inspector/login" : "/", req.url));
+      return NextResponse.redirect(new URL("/login", req.url));
     }
 
     // Control de Roles (RBAC)
