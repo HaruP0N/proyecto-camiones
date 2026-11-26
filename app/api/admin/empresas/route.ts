@@ -1,7 +1,7 @@
 // app/api/admin/empresas/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
-import { getPool, sql } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 
 export const runtime = "nodejs";
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
         prioridad_camion,
         prioridad_acople,
         created_at
-      FROM dbo.empresas
+      FROM public.empresas
       ORDER BY created_at DESC
     `);
 

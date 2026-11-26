@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 import bcrypt from "bcryptjs";
 
@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
     const pool = await getPool();
 
     const ok = await pool.request().input("id", id).query(`
-      SELECT TOP 1 id
-      FROM dbo.usuarios
+      SELECT id
+      FROM public.usuarios
       WHERE id=@id AND LOWER(LTRIM(RTRIM(rol)))='inspector'
-    `);
+     LIMIT 1`);
     if (ok.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Inspector no encontrado" }, { status: 404 });
     }
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
       .request()
       .input("id", id)
       .input("password_hash", hash)
-      .query(`UPDATE dbo.usuarios SET password_hash=@password_hash WHERE id=@id`);
+      .query(`UPDATE public.usuarios SET password_hash=@password_hash WHERE id=@id`);
 
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (err) {

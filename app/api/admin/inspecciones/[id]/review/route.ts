@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
-import { getPool } from "@/lib/azure-sql";
+import { getPool, Transaction } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -23,7 +22,7 @@ export async function GET(
 
     // 1. Cabecera
     const cabeceraQuery = `
-      SELECT 
+      SELECT
         i.id,
         i.inspector_id,
         i.fecha_inspeccion,
@@ -37,11 +36,11 @@ export async function GET(
         e.nombre as empresa,
         u.nombre as inspector_nombre,
         u.email as inspector_email
-      FROM dbo.inspecciones i
-      LEFT JOIN dbo.camiones c ON c.id = i.camion_id
-      LEFT JOIN dbo.proveedores p ON p.id = c.proveedor_id
-      LEFT JOIN dbo.empresas e ON e.id = p.empresa_id
-      LEFT JOIN dbo.usuarios u ON u.id = i.inspector_id
+      FROM public.inspecciones i
+      LEFT JOIN public.camiones c ON c.id = i.camion_id
+      LEFT JOIN public.proveedores p ON p.id = c.proveedor_id
+      LEFT JOIN public.empresas e ON e.id = p.empresa_id
+      LEFT JOIN public.usuarios u ON u.id = i.inspector_id
       WHERE i.id = @id
     `;
     const resultCabecera = await pool.request().input("id", id).query(cabeceraQuery);
@@ -52,38 +51,19 @@ export async function GET(
 
     // 2. Detalles
     const detallesQuery = `
-      IF COL_LENGTH('dbo.detalle_inspeccion', 'resultado_admin') IS NULL
-      BEGIN
-        SELECT 
+        SELECT
           d.id,
           d.categoria,
-          d.item_id AS itemId,
+          d.item_id AS "itemId",
           d.resultado AS estado,
-          d.descripcion_falla AS descripcionFalla,
-          d.motivo_no_aplica AS motivoNoAplica,
+          d.descripcion_falla AS "descripcionFalla",
+          d.motivo_no_aplica AS "motivoNoAplica",
           d.seccion,
           d.nivel,
-          CAST(NULL AS varchar(20)) AS estadoAdmin,
-          CAST(NULL AS nvarchar(2000)) AS comentarioAdmin
-        FROM dbo.detalle_inspeccion d
+          d.resultado_admin AS "estadoAdmin",
+          d.comentario_admin AS "comentarioAdmin"
+        FROM public.detalle_inspeccion d
         WHERE d.inspeccion_id = @id
-      END
-      ELSE
-      BEGIN
-        SELECT 
-          d.id,
-          d.categoria,
-          d.item_id AS itemId,
-          d.resultado AS estado,
-          d.descripcion_falla AS descripcionFalla,
-          d.motivo_no_aplica AS motivoNoAplica,
-          d.seccion,
-          d.nivel,
-          d.resultado_admin AS estadoAdmin,
-          d.comentario_admin AS comentarioAdmin
-        FROM dbo.detalle_inspeccion d
-        WHERE d.inspeccion_id = @id
-      END
     `;
     const resultDetalles = await pool.request().input("id", id).query(detallesQuery);
 
@@ -91,14 +71,14 @@ export async function GET(
     let fotos: any[] = [];
     try {
       const fotosQuery = `
-        SELECT 
+        SELECT
           COALESCE(f.url_archivo, f.nombre_archivo) as url,
           f.nombre_archivo,
-          f.fecha_captura, 
-          d.item_id, 
+          f.fecha_captura,
+          d.item_id,
           d.categoria
-        FROM dbo.fotos_inspeccion f
-        INNER JOIN dbo.detalle_inspeccion d ON f.detalle_inspeccion_id = d.id
+        FROM public.fotos_inspeccion f
+        INNER JOIN public.detalle_inspeccion d ON f.detalle_inspeccion_id = d.id
         WHERE d.inspeccion_id = @id
       `;
       const resultFotos = await pool.request().input("id", id).query(fotosQuery);
@@ -167,17 +147,20 @@ export async function POST(
       return NextResponse.json({ error: "Acción desconocida" }, { status: 400 });
     }
 
-    const tx = new sql.Transaction(pool);
+    const tx = new Transaction(pool);
     await tx.begin();
 
     try {
+      const current = await tx.request().input("id", id).query(`
+        SELECT id FROM public.inspecciones WHERE id = @id AND estado = 'REALIZADA' FOR UPDATE
+      `);
+      if (!current.recordset.length) {
+        await tx.rollback();
+        return NextResponse.json({ error: "Inspección realizada no encontrada" }, { status: 404 });
+      }
+
       // 1) Guardar overrides por item si vienen
       if (Array.isArray(items) && items.length > 0) {
-        const hasColsRes = await tx
-          .request()
-          .query(`SELECT IIF(COL_LENGTH('dbo.detalle_inspeccion','resultado_admin') IS NULL, 0, 1) AS hasCols`);
-        const hasAdminCols = Boolean(hasColsRes.recordset?.[0]?.hasCols);
-
         for (const item of items) {
           const detalleId = Number(item?.id);
           if (!Number.isInteger(detalleId) || detalleId <= 0) continue;
@@ -192,38 +175,22 @@ export async function POST(
             estadoAdminRaw === "no_aplica" ? "no_aplica" :
             null;
 
-          if (hasAdminCols) {
             await tx
               .request()
               .input("detalleId", detalleId)
               .input("inspeccionId", id)
-              .input("estadoAdmin", estadoAdmin)
+              .input("estadoAdmin", estadoAdminRaw || null)
               .input("comentarioAdmin", comentarioAdmin)
               .input("resultadoDb", resultadoDb)
               .query(`
-                UPDATE dbo.detalle_inspeccion
+                UPDATE public.detalle_inspeccion
                 SET resultado_admin = @estadoAdmin,
                     comentario_admin = @comentarioAdmin,
                     resultado = COALESCE(@resultadoDb, resultado),
                     estado_item = COALESCE(@resultadoDb, estado_item)
                 WHERE id = @detalleId AND inspeccion_id = @inspeccionId
               `);
-          } else {
-            await tx
-              .request()
-              .input("detalleId", detalleId)
-              .input("inspeccionId", id)
-              .input("estadoAdmin", estadoAdmin)
-              .input("comentarioAdmin", comentarioAdmin)
-              .input("resultadoDb", resultadoDb)
-              .query(`
-                UPDATE dbo.detalle_inspeccion
-                SET resultado = COALESCE(@resultadoDb, resultado),
-                    estado_item = COALESCE(@resultadoDb, estado_item),
-                    descripcion_falla = COALESCE(@comentarioAdmin, descripcion_falla)
-                WHERE id = @detalleId AND inspeccion_id = @inspeccionId
-              `);
-          }
+
         }
       }
 
@@ -244,8 +211,8 @@ export async function POST(
       }
 
       await reqUpd.query(`
-        UPDATE dbo.inspecciones
-        SET 
+        UPDATE public.inspecciones
+        SET
           revision_admin = @revision,
           resultado_general = COALESCE(@resultado_edit, @resultado),
           estado = @estado,
@@ -259,7 +226,7 @@ export async function POST(
         const camionRes = await tx
           .request()
           .input("id", id)
-          .query(`SELECT TOP 1 camion_id, inspector_id FROM dbo.inspecciones WHERE id = @id`);
+          .query(`SELECT camion_id, inspector_id FROM public.inspecciones WHERE id = @id LIMIT 1`);
 
         if (camionRes.recordset.length === 0) {
           throw new Error("No se encontró el camión para reagendar.");
@@ -289,7 +256,7 @@ export async function POST(
         const dup = await tx
           .request()
           .input("camionId", camionId)
-          .query(`SELECT TOP 1 id FROM dbo.inspecciones WHERE camion_id = @camionId AND estado = 'PROGRAMADA'`);
+          .query(`SELECT id FROM public.inspecciones WHERE camion_id = @camionId AND estado = 'PROGRAMADA' LIMIT 1`);
         if (dup.recordset.length > 0) {
           throw new Error("El camión ya tiene una inspección programada activa.");
         }
@@ -298,15 +265,14 @@ export async function POST(
           .request()
           .input("camionId", camionId)
           .input("inspectorId", inspectorId)
-          .input("fechaProgramada", new Date(fechaProgramada))
+          .input("fechaProgramada", fechaProgramada)
           .input("obs", obs || comentario || null)
           .query(`
-            INSERT INTO dbo.inspecciones 
+            INSERT INTO public.inspecciones
               (camion_id, inspector_id, fecha_programada, fecha_inspeccion, estado, resultado_general, observaciones_generales, revision_admin, comentario_admin)
-            OUTPUT INSERTED.id AS id
-            VALUES 
-              (@camionId, @inspectorId, @fechaProgramada, @fechaProgramada, 'PROGRAMADA', 'PENDIENTE', @obs, 'REAGENDADA', @obs)
-          `);
+            VALUES
+              (@camionId, @inspectorId, (CAST(@fechaProgramada AS timestamp) AT TIME ZONE 'America/Santiago'), NULL, 'PROGRAMADA', 'PENDIENTE', @obs, 'REAGENDADA', @obs) RETURNING id AS id
+`);
 
         const newInspeccionId = insertRes.recordset?.[0]?.id;
         const notifInspectorId = inspectorId ?? camionRes.recordset?.[0]?.inspector_id ?? null;
@@ -318,8 +284,8 @@ export async function POST(
             .input("titulo", "Inspección reagendada")
             .input("mensaje", obs || comentario || `Inspección reagendada para ${fechaProgramada}`)
             .query(`
-              INSERT INTO dbo.notificaciones (usuario_id, inspeccion_id, tipo, titulo, mensaje, leida, created_at)
-              VALUES (@usuarioId, @inspeccionId, 'REAGENDADA', @titulo, @mensaje, 0, SYSDATETIME())
+              INSERT INTO public.notificaciones (usuario_id, inspeccion_id, tipo, titulo, mensaje, leida, created_at)
+              VALUES (@usuarioId, @inspeccionId, 'REAGENDADA', @titulo, @mensaje, FALSE, CURRENT_TIMESTAMP)
             `);
         }
       }

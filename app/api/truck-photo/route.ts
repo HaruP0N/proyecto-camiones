@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireCliente } from "@/lib/shared/security/cliente-auth";
 
 export const runtime = "nodejs";
@@ -27,12 +27,12 @@ export async function POST(req: NextRequest) {
       .input("camionId", camionId)
       .input("empresaId", cliente.empresaId)
       .query(`
-        SELECT TOP 1 c.id
+        SELECT c.id
         FROM camiones c
         INNER JOIN proveedores p ON p.id = c.proveedor_id
         WHERE c.id = @camionId
           AND p.empresa_id = @empresaId
-      `);
+       LIMIT 1`);
 
     if (owns.recordset.length === 0) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });
@@ -44,14 +44,8 @@ export async function POST(req: NextRequest) {
       .input("camion_id", camionId)
       .input("url", url)
       .query(`
-        IF EXISTS (SELECT 1 FROM camion_fotos WHERE camion_id = @camion_id)
-        BEGIN
-          UPDATE camion_fotos SET url = @url WHERE camion_id = @camion_id
-        END
-        ELSE
-        BEGIN
-          INSERT INTO camion_fotos (camion_id, url) VALUES (@camion_id, @url)
-        END
+        INSERT INTO camion_fotos (camion_id, url) VALUES (@camion_id, @url)
+        ON CONFLICT (camion_id) DO UPDATE SET url = EXCLUDED.url
       `);
 
     return NextResponse.json({ success: true });

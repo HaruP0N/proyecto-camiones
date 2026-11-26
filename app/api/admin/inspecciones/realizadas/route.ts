@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 function isValidDate(s: string) {
@@ -32,32 +32,27 @@ export async function GET(req: NextRequest) {
     // y como última opción fecha_inspeccion (DATE) convertida.
     // Rango: >= from y < (to + 1 día) para incluir todo el día "to".
     const q = `
-      SELECT TOP 500
-        i.id,
+      SELECT i.id,
         c.patente,
-        e.nombre AS empresaNombre,
-        CONVERT(varchar(16),
-          COALESCE(i.fecha_realizada, i.fecha_programada, CONVERT(datetime2, i.fecha_inspeccion)),
-          120
-        ) AS fechaInspeccion,
-        u.nombre AS inspectorNombre,
+        e.nombre AS "empresaNombre",
+        to_char(COALESCE(i.fecha_realizada, i.fecha_inspeccion, i.fecha_programada) AT TIME ZONE 'America/Santiago', 'YYYY-MM-DD"T"HH24:MI') AS "fechaInspeccion",
+        u.nombre AS "inspectorNombre",
         i.resultado_general AS resultado
-      FROM dbo.inspecciones i
-      INNER JOIN dbo.camiones c ON c.id = i.camion_id
-      INNER JOIN dbo.proveedores p ON p.id = c.proveedor_id
-      INNER JOIN dbo.empresas e ON e.id = p.empresa_id
-      LEFT JOIN dbo.usuarios u ON u.id = i.inspector_id
+      FROM public.inspecciones i
+      INNER JOIN public.camiones c ON c.id = i.camion_id
+      INNER JOIN public.proveedores p ON p.id = c.proveedor_id
+      INNER JOIN public.empresas e ON e.id = p.empresa_id
+      LEFT JOIN public.usuarios u ON u.id = i.inspector_id
       WHERE i.estado = 'REALIZADA'
-        ${from ? "AND COALESCE(i.fecha_realizada, i.fecha_programada, CONVERT(datetime2, i.fecha_inspeccion)) >= CONVERT(date, @from)" : ""}
-        ${to ? "AND COALESCE(i.fecha_realizada, i.fecha_programada, CONVERT(datetime2, i.fecha_inspeccion)) < DATEADD(day, 1, CONVERT(date, @to))" : ""}
-        ${patente ? "AND UPPER(LTRIM(RTRIM(c.patente))) LIKE '%' + UPPER(@patente) + '%'" : ""}
+        ${from ? "AND COALESCE(i.fecha_realizada, i.fecha_inspeccion, i.fecha_programada) >= (CAST(@from AS timestamp) AT TIME ZONE 'America/Santiago')" : ""}
+        ${to ? "AND COALESCE(i.fecha_realizada, i.fecha_inspeccion, i.fecha_programada) < ((CAST(@to AS date) + INTERVAL '1 day') AT TIME ZONE 'America/Santiago')" : ""}
+        ${patente ? "AND UPPER(LTRIM(RTRIM(c.patente))) LIKE '%' || UPPER(@patente) || '%'" : ""}
         ${
           empresa
-            ? "AND (UPPER(LTRIM(RTRIM(e.nombre))) LIKE '%' + UPPER(@empresa) + '%' OR UPPER(LTRIM(RTRIM(e.rut))) LIKE '%' + UPPER(@empresa) + '%')"
+            ? "AND (UPPER(LTRIM(RTRIM(e.nombre))) LIKE '%' || UPPER(@empresa) || '%' OR UPPER(LTRIM(RTRIM(e.rut))) LIKE '%' || UPPER(@empresa) || '%')"
             : ""
         }
-      ORDER BY COALESCE(i.fecha_realizada, i.fecha_programada, CONVERT(datetime2, i.fecha_inspeccion)) DESC;
-    `;
+      ORDER BY COALESCE(i.fecha_realizada, i.fecha_inspeccion, i.fecha_programada) DESC LIMIT 500`;
 
     const r = pool.request();
     if (from) r.input("from", from);

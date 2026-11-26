@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyTokenFromRequest, normalizeRole } from "@/lib/shared/security/staff-auth";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 
 /**
  * GET /api/inspector/me
@@ -29,14 +29,14 @@ export async function GET(req: NextRequest) {
       .request()
       .input("usuario_id", tokenData.userId)
       .query(`
-        SELECT 
+        SELECT
           id,
           email,
-          nombre = email,
+          nombre,
           rol,
           activo
         FROM usuarios
-        WHERE id = @usuario_id AND rol = 'inspector' AND activo = 1
+        WHERE id = @usuario_id AND rol = 'inspector' AND activo = TRUE
       `);
 
     if (result.recordset.length === 0) {

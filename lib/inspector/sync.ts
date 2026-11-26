@@ -287,7 +287,7 @@ async function sincronizarInspeccion(payload: { inspeccionId?: number; inspeccio
         }
       }
       if (url) {
-        const itemId = typeof foto.tipo === "string" ? foto.tipo : undefined;
+        const itemId = typeof foto.tipo === "string" && respuestas.some(r => String(r.itemId) === foto.tipo) ? foto.tipo : undefined;
         fotos_evidencia.push({
           itemId,
           url,

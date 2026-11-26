@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -49,10 +49,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
       .request()
       .input("id", inspeccionId)
       .query(`
-        SELECT TOP 1 id, estado
-        FROM dbo.inspecciones
+        SELECT id, estado
+        FROM public.inspecciones
         WHERE id = @id
-      `);
+       LIMIT 1`);
 
     if (current.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Inspección no existe" }, { status: 404 });
@@ -72,7 +72,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         .request()
         .input("id", inspeccionId)
         .query(`
-          UPDATE dbo.inspecciones
+          UPDATE public.inspecciones
           SET estado = 'CANCELADA'
           WHERE id = @id
         `);
@@ -109,12 +109,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
           .request()
           .input("id", inspectorId)
           .query(`
-            SELECT TOP 1 id
-            FROM dbo.usuarios
+            SELECT id
+            FROM public.usuarios
             WHERE id = @id
-              AND ISNULL(activo, 0) = 1
+              AND COALESCE(activo, FALSE) = TRUE
               AND LOWER(LTRIM(RTRIM(rol))) = 'inspector'
-          `);
+           LIMIT 1`);
 
         if (insp.recordset.length === 0) {
           return NextResponse.json(
@@ -124,14 +124,13 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         }
       }
 
-      // Validación futura
-      await pool
-        .request()
-        .input("fecha", fechaSql)
-        .query(`
-          IF (CONVERT(datetime2, @fecha, 120) < DATEADD(minute, 1, SYSDATETIME()))
-            THROW 50001, 'La fecha debe ser futura', 1;
-        `);
+      // Interpretar datetime-local en Chile, independientemente del servidor.
+      const validation = await pool.request().input("fecha", fechaSql).query(`
+        SELECT (CAST(@fecha AS timestamp) AT TIME ZONE 'America/Santiago') >= CURRENT_TIMESTAMP + INTERVAL '1 minute' AS valid
+      `);
+      if (!validation.recordset[0]?.valid) {
+        return NextResponse.json({ ok: false, error: "La fecha debe ser futura" }, { status: 400 });
+      }
 
       await pool
         .request()
@@ -140,10 +139,10 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
         .input("inspectorId", inspectorId)
         .input("obs", obs)
         .query(`
-          UPDATE dbo.inspecciones
+          UPDATE public.inspecciones
           SET
-            fecha_programada = CONVERT(datetime2, @fecha, 120),
-            fecha_inspeccion = CONVERT(date, @fecha, 120),
+            fecha_programada = (CAST(@fecha AS timestamp) AT TIME ZONE 'America/Santiago'),
+            fecha_inspeccion = NULL,
             inspector_id = @inspectorId,
             observaciones_generales = COALESCE(NULLIF(@obs, ''), observaciones_generales)
           WHERE id = @id

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 
@@ -11,7 +11,7 @@ function normalizeEmail(e: string) {
 
 function getSecret() {
   // ✅ ideal: STAFF_JWT_SECRET
-  return process.env.STAFF_JWT_SECRET || process.env.ADMIN_JWT_SECRET || "";
+  return process.env.ADMIN_JWT_SECRET || "";
 }
 
 export async function POST(req: NextRequest) {
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const secret = getSecret();
     if (!secret) {
       return NextResponse.json(
-        { ok: false, error: "Falta configurar STAFF_JWT_SECRET (o ADMIN_JWT_SECRET)" },
+        { ok: false, error: "Falta configurar ADMIN_JWT_SECRET" },
         { status: 500 }
       );
     }
@@ -48,10 +48,10 @@ export async function POST(req: NextRequest) {
       .request()
       .input("email", email)
       .query(`
-        SELECT TOP 1 id, nombre, email, password_hash, rol, activo
-        FROM dbo.usuarios
+        SELECT id, nombre, email, password_hash, rol, activo
+        FROM public.usuarios
         WHERE LOWER(LTRIM(RTRIM(email))) = @email
-      `);
+       LIMIT 1`);
 
     if (r.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Email o contraseña incorrectos" }, { status: 401 });

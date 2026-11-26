@@ -1,5 +1,6 @@
+import { requireAdmin } from "@/lib/shared/security/staff-auth"
 import { type NextRequest, NextResponse } from "next/server"
-import { getPool } from "@/lib/azure-sql"
+import { getPool } from "@/lib/database"
 import { hashPin, isValidPin } from "@/lib/shared/utils/pin"
 
 export async function POST(request: NextRequest) {
@@ -44,29 +45,28 @@ export async function POST(request: NextRequest) {
       .input("telefono_contacto", telefono_contacto || null)
       .input("email_contacto", email_contacto || null)
       .input("direccion", direccion || null)
-      .input("prioridad_frio", prioridad_frio ? 1 : 0)
-      .input("prioridad_carroceria", prioridad_carroceria ? 1 : 0)
-      .input("prioridad_estructura", prioridad_estructura ? 1 : 0)
-      .input("prioridad_camion", prioridad_camion ? 1 : 0)
-      .input("prioridad_acople", prioridad_acople ? 1 : 0)
+      .input("prioridad_frio", Boolean(prioridad_frio))
+      .input("prioridad_carroceria", Boolean(prioridad_carroceria))
+      .input("prioridad_estructura", Boolean(prioridad_estructura))
+      .input("prioridad_camion", Boolean(prioridad_camion))
+      .input("prioridad_acople", Boolean(prioridad_acople))
       .input("pin_hash", pin_hash)
       .query(`
         INSERT INTO empresas (
-          nombre, rut, rubro, productos_transportados, 
+          nombre, rut, rubro, productos_transportados,
           telefono_contacto, email_contacto, direccion,
           prioridad_frio, prioridad_carroceria, prioridad_estructura,
           prioridad_camion, prioridad_acople,
           pin_hash
         )
-        OUTPUT INSERTED.id
         VALUES (
           @nombre, @rut, @rubro, @productos_transportados,
           @telefono_contacto, @email_contacto, @direccion,
           @prioridad_frio, @prioridad_carroceria, @prioridad_estructura,
           @prioridad_camion, @prioridad_acople,
           @pin_hash
-        )
-      `)
+        ) RETURNING id
+`)
 
     return NextResponse.json({
       success: true,
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     console.error("[empresas][POST] Error:", error)
 
-    if (error?.number === 2627) {
+    if (error?.code === "23505") {
       return NextResponse.json({ error: "El RUT ya está registrado" }, { status: 400 })
     }
 
@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    if (!requireAdmin(request)) return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     const { searchParams } = new URL(request.url)
     const rut = searchParams.get("rut")
 
@@ -96,11 +97,11 @@ export async function GET(request: NextRequest) {
         .request()
         .input("rut", rut)
         .query(`
-          SELECT TOP 1 id, nombre, rut
+          SELECT id, nombre, rut
           FROM empresas
           WHERE rut = @rut
           ORDER BY created_at DESC
-        `)
+         LIMIT 1`)
 
       return NextResponse.json({
         success: true,

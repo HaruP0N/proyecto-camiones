@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 
 export const runtime = "nodejs";
 
@@ -43,10 +43,10 @@ export async function PATCH(req: NextRequest) {
     const pool = await getPool();
 
     const ok = await pool.request().input("id", id).query(`
-      SELECT TOP 1 id
-      FROM dbo.usuarios
+      SELECT id
+      FROM public.usuarios
       WHERE id=@id AND LOWER(LTRIM(RTRIM(rol)))='inspector'
-    `);
+     LIMIT 1`);
     if (ok.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Inspector no encontrado." }, { status: 404 });
     }
@@ -57,10 +57,10 @@ export async function PATCH(req: NextRequest) {
         .input("email", email)
         .input("id", id)
         .query(`
-          SELECT TOP 1 id
-          FROM dbo.usuarios
+          SELECT id
+          FROM public.usuarios
           WHERE LOWER(LTRIM(RTRIM(email)))=@email AND id<>@id
-        `);
+         LIMIT 1`);
 
       if (dup.recordset.length > 0) {
         return NextResponse.json(
@@ -83,11 +83,11 @@ export async function PATCH(req: NextRequest) {
     }
     if (activo !== undefined) {
       sets.push("activo=@activo");
-      request.input("activo", activo ? 1 : 0);
+      request.input("activo", activo);
     }
 
     await request.query(`
-      UPDATE dbo.usuarios
+      UPDATE public.usuarios
       SET ${sets.join(", ")}
       WHERE id=@id
     `);

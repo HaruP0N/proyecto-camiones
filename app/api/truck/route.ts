@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server"
-import { getPool } from "@/lib/azure-sql"
+import { requireCliente } from "@/lib/shared/security/cliente-auth"
+import { requireAdmin } from "@/lib/shared/security/staff-auth"
+import { NextRequest, NextResponse } from "next/server"
+import { getPool } from "@/lib/database"
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
     const empresaId = Number(searchParams.get("empresaId"))
@@ -10,6 +12,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "empresaId es requerido" }, { status: 400 })
     }
 
+    const cliente = requireCliente(req)
+    if (!requireAdmin(req) && cliente?.empresaId !== empresaId) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
     const pool = await getPool()
     const result = await pool
       .request()

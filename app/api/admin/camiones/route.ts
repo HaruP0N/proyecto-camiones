@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 function normalizePatente(p: string) {
@@ -32,13 +32,13 @@ export async function GET(req: NextRequest) {
     }
 
     // 👇 Filtrado por estado ya en SQL (mejor performance)
-    // Nota: comparo con SYSDATETIME() (hora del servidor SQL). Sin timezone, consistente.
+    // Comparar por día en Chile, tanto para el filtro como para la etiqueta.
     if (estado === "SIN_AGENDA") {
       where.push("ip.id IS NULL");
     } else if (estado === "PROGRAMADA") {
-      where.push("ip.id IS NOT NULL AND ip.fecha_programada >= SYSDATETIME()");
+      where.push("ip.id IS NOT NULL AND CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS date) >= CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date)");
     } else if (estado === "VENCIDA") {
-      where.push("ip.id IS NOT NULL AND ip.fecha_programada < SYSDATETIME()");
+      where.push("ip.id IS NOT NULL AND CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS date) < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date)");
     }
 
     const query = `
@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
         c.anio,
         c.tipo,
         c.carroceria,
-        CONVERT(varchar(16), c.created_at, 126) AS created_at_local,
+        to_char(c.created_at AT TIME ZONE 'America/Santiago', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at_local,
 
         e.id            AS empresa_id,
         e.nombre        AS empresa_nombre,
@@ -58,24 +58,27 @@ export async function GET(req: NextRequest) {
         e.email_contacto,
         e.telefono_contacto,
 
+        CASE WHEN ip.id IS NULL THEN 'SIN_AGENDA'
+          WHEN CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS date) < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date)
+          THEN 'VENCIDA' ELSE 'PROGRAMADA' END AS ui_estado,
         ip.id           AS inspeccion_id,
-        CONVERT(varchar(16), ip.fecha_programada, 126) AS fecha_programada_local,
+        to_char(ip.fecha_programada AT TIME ZONE 'America/Santiago', 'YYYY-MM-DD"T"HH24:MI:SS') AS fecha_programada_local,
         ip.inspector_id,
         u.nombre        AS inspector_nombre
 
-      FROM dbo.camiones c
-      JOIN dbo.proveedores p ON p.id = c.proveedor_id
-      JOIN dbo.empresas e ON e.id = p.empresa_id
+      FROM public.camiones c
+      JOIN public.proveedores p ON p.id = c.proveedor_id
+      JOIN public.empresas e ON e.id = p.empresa_id
 
-      OUTER APPLY (
-        SELECT TOP 1 i.*
-        FROM dbo.inspecciones i
+      LEFT JOIN LATERAL (
+        SELECT i.*
+        FROM public.inspecciones i
         WHERE i.camion_id = c.id
           AND i.estado = 'PROGRAMADA'
-        ORDER BY i.fecha_programada DESC
-      ) ip
+        ORDER BY i.fecha_programada DESC LIMIT 1
+      ) ip ON TRUE
 
-      LEFT JOIN dbo.usuarios u ON u.id = ip.inspector_id
+      LEFT JOIN public.usuarios u ON u.id = ip.inspector_id
 
       ${where.length ? "WHERE " + where.join(" AND ") : ""}
       ORDER BY c.created_at DESC
@@ -83,20 +86,9 @@ export async function GET(req: NextRequest) {
 
     const r = await request.query(query);
 
-    // ✅ Ya no necesito "now" para filtrar, pero sí para construir ui_estado de manera consistente.
-    // Uso la misma lógica que SQL (SYSDATETIME). Como no puedo leer SYSDATETIME() en node,
-    // lo calculo igual que antes para la UI. Esto NO afecta filtro (ya filtró SQL).
-    const now = new Date();
-
     const camiones = r.recordset.map((row: any) => {
+      const ui_estado = row.ui_estado;
       const fechaStr: string | null = row.fecha_programada_local ?? null;
-
-      let ui_estado: "SIN_AGENDA" | "PROGRAMADA" | "VENCIDA" = "SIN_AGENDA";
-      if (fechaStr) {
-        const d = new Date(fechaStr); // "YYYY-MM-DDTHH:mm" -> local
-        ui_estado = d.getTime() >= now.getTime() ? "PROGRAMADA" : "VENCIDA";
-      }
-
       return {
         id: Number(row.camion_id),
         patente: row.patente,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 import bcrypt from "bcryptjs";
 
@@ -21,9 +21,9 @@ export async function GET(req: NextRequest) {
     // incluir activo (para dashboard) y NO filtrar solo activos
     const r = await pool.request().query(`
       SELECT id, nombre, email, rol, activo
-      FROM dbo.usuarios
+      FROM public.usuarios
       WHERE LOWER(LTRIM(RTRIM(rol))) = 'inspector'
-      ORDER BY ISNULL(activo, 0) DESC, nombre ASC
+      ORDER BY COALESCE(activo, FALSE) DESC, nombre ASC
     `);
 
     const data = r.recordset.map((x: any) => ({
@@ -79,10 +79,10 @@ export async function POST(req: NextRequest) {
 
     // Evitar duplicado email
     const exists = await pool.request().input("email", email).query(`
-      SELECT TOP 1 id
-      FROM dbo.usuarios
+      SELECT id
+      FROM public.usuarios
       WHERE LOWER(LTRIM(RTRIM(email))) = @email
-    `);
+     LIMIT 1`);
 
     if (exists.recordset.length > 0) {
       return NextResponse.json(
@@ -99,12 +99,11 @@ export async function POST(req: NextRequest) {
       .input("email", email)
       .input("password_hash", hash)
       .input("rol", "inspector")
-      .input("activo", 1)
+      .input("activo", true)
       .query(`
-        INSERT INTO dbo.usuarios (nombre, email, password_hash, rol, activo)
-        OUTPUT INSERTED.id
-        VALUES (@nombre, @email, @password_hash, @rol, @activo)
-      `);
+        INSERT INTO public.usuarios (nombre, email, password_hash, rol, activo)
+        VALUES (@nombre, @email, @password_hash, @rol, @activo) RETURNING id
+`);
 
     const newId = ins.recordset?.[0]?.id ? Number(ins.recordset[0].id) : null;
 

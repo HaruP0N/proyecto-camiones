@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 
 export const runtime = "nodejs";
 
@@ -39,16 +39,15 @@ export async function POST(req: NextRequest) {
       .request()
       .input("email", email)
       .query(`
-        SELECT TOP 1
-          id,
+        SELECT id,
           nombre,
           email,
           password_hash,
           rol,
           activo
-        FROM dbo.usuarios
+        FROM public.usuarios
         WHERE LOWER(LTRIM(RTRIM(email))) = @email
-      `);
+       LIMIT 1`);
 
     if (r.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Credenciales incorrectas" }, { status: 401 });

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool, Transaction } from "@/lib/database";
 import { requireCliente } from "@/lib/shared/security/cliente-auth";
 
 export const runtime = "nodejs";
@@ -9,6 +9,7 @@ const ALLOWED_CARROCERIAS = new Set([
   "carro_reefer",
   "camara_de_frio",
   "camion_paquetero",
+  "camion_carro_paquetero",
 ]);
 
 function normalizePatente(p: string) {
@@ -49,7 +50,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: `Carrocería inválida: ${carroceria}` }, { status: 400 });
       }
 
-      const anioNum = Number(t?.anio);
+      if (t?.tipo && !["camion", "acople"].includes(t.tipo)) {
+        return NextResponse.json({ error: "Tipo de camión inválido" }, { status: 400 });
+      }
+      const anioNum = t?.anio === "" || t?.anio == null ? NaN : Number(t.anio);
+      if (Number.isFinite(anioNum) && (!Number.isInteger(anioNum) || anioNum < 1900 || anioNum > 2200)) {
+        return NextResponse.json({ error: "Año inválido" }, { status: 400 });
+      }
       items.push({
         patente,
         carroceria,
@@ -67,21 +74,26 @@ export async function POST(req: NextRequest) {
     const pool = await getPool();
     const empresaId = Number(cliente.empresaId);
 
+    const tx = new Transaction(pool);
+    await tx.begin();
+    try {
+      // Serialize supplier creation and batch writes within the owning company.
+      await tx.request().input("empresaId", empresaId).query('SELECT id FROM public.empresas WHERE id = @empresaId FOR UPDATE');
     // --- proveedor default por empresa (desde cookie) ---
-    const provRes = await pool
+    const provRes = await tx
       .request()
       .input("empresa_id", empresaId)
       .query(`
-        SELECT TOP 1 id
+        SELECT id
         FROM proveedores
         WHERE empresa_id = @empresa_id
         ORDER BY created_at DESC
-      `);
+       LIMIT 1`);
 
     let proveedorId: number | null = provRes.recordset?.[0]?.id ?? null;
 
     if (!proveedorId) {
-      const createProv = await pool
+      const createProv = await tx
         .request()
         .input("empresa_id", empresaId)
         .input("nombre", "Proveedor (auto)")
@@ -89,9 +101,8 @@ export async function POST(req: NextRequest) {
         .input("tipo_entidad", "empresa")
         .query(`
           INSERT INTO proveedores (empresa_id, nombre, tipo_transportista, tipo_entidad)
-          OUTPUT INSERTED.id
-          VALUES (@empresa_id, @nombre, @tipo_transportista, @tipo_entidad)
-        `);
+          VALUES (@empresa_id, @nombre, @tipo_transportista, @tipo_entidad) RETURNING id
+`);
       proveedorId = createProv.recordset[0].id;
     }
 
@@ -99,22 +110,22 @@ export async function POST(req: NextRequest) {
     const insertedTrucks: Array<{ id: number; patente: string }> = [];
 
     for (const t of items) {
-      const exists = await pool
+      const exists = await tx
         .request()
         .input("proveedor_id", proveedorId)
         .input("patente", t.patente)
         .query(`
-          SELECT TOP 1 id
+          SELECT id
           FROM camiones
           WHERE proveedor_id = @proveedor_id AND patente = @patente
-        `);
+         LIMIT 1`);
 
       if (exists.recordset.length > 0) {
         duplicates.push(t.patente);
         continue;
       }
 
-      const ins = await pool
+      const ins = await tx
         .request()
         .input("proveedor_id", proveedorId)
         .input("patente", t.patente)
@@ -125,13 +136,14 @@ export async function POST(req: NextRequest) {
         .input("carroceria", t.carroceria)
         .query(`
           INSERT INTO camiones (proveedor_id, patente, marca, modelo, anio, tipo, carroceria)
-          OUTPUT INSERTED.id, INSERTED.patente
-          VALUES (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria)
-        `);
+          VALUES (@proveedor_id, @patente, @marca, @modelo, @anio, @tipo, @carroceria) ON CONFLICT DO NOTHING RETURNING id, patente
+`);
 
+      if (!ins.recordset.length) { duplicates.push(t.patente); continue; }
       insertedTrucks.push({ id: ins.recordset[0].id, patente: ins.recordset[0].patente });
     }
 
+    await tx.commit();
     return NextResponse.json({
       success: true,
       proveedorId,
@@ -139,6 +151,8 @@ export async function POST(req: NextRequest) {
       insertedTrucks,
       duplicates,
     });
+    } catch (error) { await tx.rollback(); throw error; }
+
   } catch (e) {
     console.error("[fleet][POST] error:", e);
     return NextResponse.json({ error: "Error al registrar flota" }, { status: 500 });
@@ -168,7 +182,7 @@ export async function PUT(req: NextRequest) {
 
     const marca = body?.marca ? String(body.marca).trim() : null;
     const modelo = body?.modelo ? String(body.modelo).trim() : null;
-    const anioNum = Number(body?.anio);
+    const anioNum = body?.anio === "" || body?.anio == null ? NaN : Number(body.anio);
     const anio = Number.isInteger(anioNum) ? anioNum : null;
 
     const pool = await getPool();
@@ -180,12 +194,12 @@ export async function PUT(req: NextRequest) {
       .input("truckId", truckId)
       .input("empresaId", empresaId)
       .query(`
-        SELECT TOP 1 c.id
+        SELECT c.id
         FROM camiones c
         INNER JOIN proveedores p ON p.id = c.proveedor_id
         WHERE c.id = @truckId
           AND p.empresa_id = @empresaId
-      `);
+       LIMIT 1`);
 
     if (owns.recordset.length === 0) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 });

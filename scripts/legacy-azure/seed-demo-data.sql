@@ -10,7 +10,7 @@ BEGIN TRY
 
     -- 1. Empresas demo
     DECLARE @empresas TABLE (id INT, nombre NVARCHAR(200), rut NVARCHAR(20));
-    
+
     INSERT INTO dbo.empresas (nombre, rut, direccion, rubro)
     OUTPUT INSERTED.id, INSERTED.nombre, INSERTED.rut INTO @empresas
     VALUES
@@ -18,7 +18,7 @@ BEGIN TRY
         (N'Logística Mar del Sur',   N'77.987.654-3', 'Puerto Montt 456', 'Transporte'),
         (N'Frío Austral Servicios',  N'78.456.789-5', 'Ruta 5 Sur Km 200', 'Refrigerados');
 
-    -- 2. Proveedores 
+    -- 2. Proveedores
     -- CORRECCIÓN: Usamos valores válidos 'licitado' y 'empresa' directamente
     DECLARE @prov TABLE (id INT, empresa_id INT);
 
@@ -28,9 +28,9 @@ BEGIN TRY
         tipo_transportista, tipo_entidad
     )
     OUTPUT INSERTED.id, INSERTED.empresa_id INTO @prov
-    SELECT 
-        id, 
-        nombre + N' - Prov', 
+    SELECT
+        id,
+        nombre + N' - Prov',
         STUFF(rut, LEN(rut), 1, CAST(id AS VARCHAR)), -- Genera RUT único ficticio
         'Dirección Comercial ' + CAST(id AS VARCHAR),
         'Jefe de Flota',
@@ -56,10 +56,10 @@ BEGIN TRY
     CROSS APPLY (VALUES
         -- Camión 1: Tracto (Simulado como 'camion_con_carro')
         (CONCAT('KX', RIGHT('00' + CAST(p.id AS VARCHAR(3)), 3), '1'), N'Scania',   N'R450',      2021, N'camion', N'camion_con_carro'),
-        
+
         -- Camión 2: Rígido Paquetero
         (CONCAT('LL', RIGHT('00' + CAST(p.id AS VARCHAR(3)), 3), '2'), N'Mercedes', N'Axor 2636', 2019, N'camion', N'camion_carro_paquetero'),
-        
+
         -- Camión 3: Acople Reefer (En lugar de Pickup que no existe en tus constraints)
         (CONCAT('JP', RIGHT('00' + CAST(p.id AS VARCHAR(3)), 3), '3'), N'Ram',      N'Reefer',    2022, N'acople', N'carro_reefer')
     ) v(patente, marca, modelo, anio, tipo, carroceria);
