@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -40,19 +40,19 @@ export async function GET(req: NextRequest) {
 
     const pool = await getPool();
 
-    const camionesTotalQ = pool.request().query(`SELECT COUNT(1) AS n FROM dbo.camiones`);
-    const empresasTotalQ = pool.request().query(`SELECT COUNT(1) AS n FROM dbo.empresas`);
+    const camionesTotalQ = pool.request().query(`SELECT COUNT(1)::integer AS n FROM public.camiones`);
+    const empresasTotalQ = pool.request().query(`SELECT COUNT(1)::integer AS n FROM public.empresas`);
 
     const hoyQ = pool
       .request()
       .input("todayStart", todayStart)
       .input("todayEnd", todayEnd)
       .query(`
-        SELECT COUNT(1) AS n
-        FROM dbo.inspecciones
+        SELECT COUNT(1)::integer AS n
+        FROM public.inspecciones
         WHERE estado = 'PROGRAMADA'
-          AND fecha_programada >= CONVERT(datetime2, @todayStart, 120)
-          AND fecha_programada <= CONVERT(datetime2, @todayEnd, 120)
+          AND fecha_programada >= (CAST(@todayStart AS timestamp) AT TIME ZONE 'America/Santiago')
+          AND fecha_programada <= (CAST(@todayEnd AS timestamp) AT TIME ZONE 'America/Santiago')
       `);
 
     const semanaQ = pool
@@ -60,21 +60,21 @@ export async function GET(req: NextRequest) {
       .input("weekStart", weekStart)
       .input("weekEnd", weekEnd)
       .query(`
-        SELECT COUNT(1) AS n
-        FROM dbo.inspecciones
+        SELECT COUNT(1)::integer AS n
+        FROM public.inspecciones
         WHERE estado = 'PROGRAMADA'
-          AND fecha_programada >= CONVERT(datetime2, @weekStart, 120)
-          AND fecha_programada <= CONVERT(datetime2, @weekEnd, 120)
+          AND fecha_programada >= (CAST(@weekStart AS timestamp) AT TIME ZONE 'America/Santiago')
+          AND fecha_programada <= (CAST(@weekEnd AS timestamp) AT TIME ZONE 'America/Santiago')
       `);
 
     const vencidasQ = pool
       .request()
       .input("nowLocal", nowLocal)
       .query(`
-        SELECT COUNT(1) AS n
-        FROM dbo.inspecciones
+        SELECT COUNT(1)::integer AS n
+        FROM public.inspecciones
         WHERE estado = 'PROGRAMADA'
-          AND fecha_programada < CONVERT(datetime2, @nowLocal, 120)
+          AND fecha_programada < (CAST(@nowLocal AS timestamp) AT TIME ZONE 'America/Santiago')
       `);
 
     const [camionesTotalR, empresasTotalR, hoyR, semanaR, vencidasR] = await Promise.all([

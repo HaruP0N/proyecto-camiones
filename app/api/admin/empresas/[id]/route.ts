@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -50,10 +50,10 @@ export async function PATCH(req: NextRequest) {
     const pool = await getPool();
 
     const exists = await pool.request().input("id", empresaId).query(`
-      SELECT TOP 1 id
-      FROM dbo.empresas
+      SELECT id
+      FROM public.empresas
       WHERE id=@id
-    `);
+     LIMIT 1`);
 
     if (exists.recordset.length === 0) {
       return NextResponse.json({ ok: false, error: "Empresa no encontrada" }, { status: 404 });
@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     await request.query(`
-      UPDATE dbo.empresas
+      UPDATE public.empresas
       SET ${sets.join(", ")}
       WHERE id=@id
     `);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireInspector } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -33,26 +33,26 @@ export async function GET(
       .request()
       .input("id", camionId)
       .query(`
-        SELECT 
-          c.id, 
-          c.patente, 
-          c.marca, 
-          c.modelo, 
-          c.anio, 
-          c.tipo, 
+        SELECT
+          c.id,
+          c.patente,
+          c.marca,
+          c.modelo,
+          c.anio,
+          c.tipo,
           c.carroceria,
           c.created_at,
-          
+
           -- Datos de la Empresa
           e.nombre AS empresa_nombre,
           e.rut AS empresa_rut,
           e.direccion AS empresa_direccion,
           e.telefono_contacto AS empresa_telefono,
           e.email_contacto AS empresa_email
-          
-        FROM dbo.camiones c
-        LEFT JOIN dbo.proveedores p ON p.id = c.proveedor_id
-        LEFT JOIN dbo.empresas e ON e.id = p.empresa_id
+
+        FROM public.camiones c
+        LEFT JOIN public.proveedores p ON p.id = c.proveedor_id
+        LEFT JOIN public.empresas e ON e.id = p.empresa_id
         WHERE c.id = @id
       `);
 
@@ -67,8 +67,7 @@ export async function GET(
       .request()
       .input("camion_id", camionId)
       .query(`
-        SELECT TOP 1
-          i.id,
+        SELECT i.id,
           i.fecha_inspeccion as fecha,
           i.nota_final as nota,
           i.resultado_general as resultado,
@@ -77,7 +76,7 @@ export async function GET(
         WHERE i.camion_id = @camion_id
           AND i.estado = 'REALIZADA'
         ORDER BY i.fecha_inspeccion DESC
-      `);
+       LIMIT 1`);
 
     const ultimaInspeccion = ultimaInspeccionResult.recordset.length > 0
       ? {

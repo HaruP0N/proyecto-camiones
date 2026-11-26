@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { isValidPin, verifyPin } from "@/lib/shared/utils/pin";
 
 export const runtime = "nodejs";
@@ -19,11 +19,11 @@ export async function POST(req: NextRequest) {
       .request()
       .input("rut", rut)
       .query(`
-        SELECT TOP 1 id, pin_hash
+        SELECT id, pin_hash
         FROM empresas
         WHERE rut = @rut
         ORDER BY created_at DESC
-      `);
+       LIMIT 1`);
 
     const row = result.recordset?.[0];
     if (!row) return NextResponse.json({ error: "Empresa no encontrada" }, { status: 404 });

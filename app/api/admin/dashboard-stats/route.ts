@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getPool } from "@/lib/azure-sql";
+import { getPool } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 
 export const runtime = "nodejs";
@@ -15,53 +15,51 @@ export async function GET(req: NextRequest) {
 
     // 1. Resultados de inspecciones (últimos 30 días)
     const resultadosQ = pool.request().query(`
-      SELECT 
+      SELECT
         resultado_general,
-        COUNT(*) as cantidad
-      FROM dbo.inspecciones
+        COUNT(*)::integer as cantidad
+      FROM public.inspecciones
       WHERE estado = 'REALIZADA'
-        AND fecha_inspeccion >= DATEADD(day, -30, GETDATE())
+        AND fecha_inspeccion >= (CURRENT_TIMESTAMP - INTERVAL '30 days')
       GROUP BY resultado_general
     `);
 
     // 2. Tasa de cumplimiento (este mes)
     const cumplimientoQ = pool.request().query(`
       SELECT
-        COUNT(CASE WHEN estado = 'REALIZADA' THEN 1 END) as realizadas,
-        COUNT(CASE WHEN estado = 'PROGRAMADA' AND fecha_programada < GETDATE() THEN 1 END) as vencidas,
-        COUNT(*) as total
-      FROM dbo.inspecciones
-      WHERE MONTH(fecha_programada) = MONTH(GETDATE())
-        AND YEAR(fecha_programada) = YEAR(GETDATE())
+        COUNT(CASE WHEN estado = 'REALIZADA' THEN 1 END)::integer as realizadas,
+        COUNT(CASE WHEN estado = 'PROGRAMADA' AND fecha_programada < CURRENT_TIMESTAMP THEN 1 END)::integer as vencidas,
+        COUNT(*)::integer as total
+      FROM public.inspecciones
+      WHERE date_trunc('month', fecha_programada AT TIME ZONE 'America/Santiago') = date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago')
     `);
 
     // 3. Inspecciones por categoría (últimos 30 días)
     const categoriasQ = pool.request().query(`
-      SELECT 
+      SELECT
         d.categoria,
-        COUNT(DISTINCT d.inspeccion_id) as cantidad
-      FROM dbo.detalle_inspeccion d
-      INNER JOIN dbo.inspecciones i ON i.id = d.inspeccion_id
+        COUNT(DISTINCT d.inspeccion_id)::integer as cantidad
+      FROM public.detalle_inspeccion d
+      INNER JOIN public.inspecciones i ON i.id = d.inspeccion_id
       WHERE i.estado = 'REALIZADA'
-        AND i.fecha_inspeccion >= DATEADD(day, -30, GETDATE())
+        AND i.fecha_inspeccion >= (CURRENT_TIMESTAMP - INTERVAL '30 days')
       GROUP BY d.categoria
       ORDER BY cantidad DESC
     `);
 
     // 4. Top 5 empresas con más inspecciones
     const empresasQ = pool.request().query(`
-      SELECT TOP 5
-        e.nombre,
-        COUNT(i.id) as total_inspecciones
-      FROM dbo.empresas e
-      INNER JOIN dbo.proveedores p ON p.empresa_id = e.id
-      INNER JOIN dbo.camiones c ON c.proveedor_id = p.id
-      INNER JOIN dbo.inspecciones i ON i.camion_id = c.id
+      SELECT e.nombre,
+        COUNT(i.id)::integer as total_inspecciones
+      FROM public.empresas e
+      INNER JOIN public.proveedores p ON p.empresa_id = e.id
+      INNER JOIN public.camiones c ON c.proveedor_id = p.id
+      INNER JOIN public.inspecciones i ON i.camion_id = c.id
       WHERE i.estado = 'REALIZADA'
-        AND i.fecha_inspeccion >= DATEADD(day, -30, GETDATE())
+        AND i.fecha_inspeccion >= (CURRENT_TIMESTAMP - INTERVAL '30 days')
       GROUP BY e.id, e.nombre
       ORDER BY total_inspecciones DESC
-    `);
+     LIMIT 5`);
 
     const [resultadosR, cumplimientoR, categoriasR, empresasR] = await Promise.all([
       resultadosQ,
@@ -72,9 +70,9 @@ export async function GET(req: NextRequest) {
 
     // Procesar resultados
     const resultados = {
-      aprobado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "aprobado")?.cantidad || 0),
-      observado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "observado")?.cantidad || 0),
-      rechazado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "rechazado")?.cantidad || 0),
+      aprobado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "APROBADO")?.cantidad || 0),
+      observado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "OBSERVADO")?.cantidad || 0),
+      rechazado: Number(resultadosR.recordset?.find((r: any) => r.resultado_general === "RECHAZADO")?.cantidad || 0),
     };
 
     const cumplimiento = {

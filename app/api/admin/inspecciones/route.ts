@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import sql from "mssql";
-import { getPool } from "@/lib/azure-sql";
+import { getPool, Transaction } from "@/lib/database";
 import { requireAdmin } from "@/lib/shared/security/staff-auth";
 import { z } from "zod";
 
@@ -47,10 +46,10 @@ export async function GET(req: NextRequest) {
     } else if (estado === "PROGRAMADA") {
       whereConditions.push("ip.id IS NOT NULL");
       // Consideramos el día completo en zona Chile (no solo la hora)
-      whereConditions.push("CAST(ip.fecha_programada AS DATE) >= CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)");
+      whereConditions.push("CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS DATE) >= CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS DATE)");
     } else if (estado === "VENCIDA") {
       whereConditions.push("ip.id IS NOT NULL");
-      whereConditions.push("CAST(ip.fecha_programada AS DATE) < CAST(SYSDATETIMEOFFSET() AT TIME ZONE 'Pacific SA Standard Time' AS DATE)");
+      whereConditions.push("CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS DATE) < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS DATE)");
     }
 
     // 5. Consulta SQL Optimizada
@@ -69,49 +68,39 @@ export async function GET(req: NextRequest) {
         e.nombre        AS empresa_nombre,
         e.rut           AS empresa_rut,
 
+        CASE WHEN ip.id IS NULL THEN 'SIN_AGENDA'
+          WHEN CAST(ip.fecha_programada AT TIME ZONE 'America/Santiago' AS date) < CAST(CURRENT_TIMESTAMP AT TIME ZONE 'America/Santiago' AS date)
+          THEN 'VENCIDA' ELSE 'PROGRAMADA' END AS ui_estado,
         ip.id           AS inspeccion_id,
         ip.fecha_programada,
         ip.inspector_id,
         u.nombre        AS inspector_nombre
 
-      FROM dbo.camiones c
-      INNER JOIN dbo.proveedores p ON p.id = c.proveedor_id
-      INNER JOIN dbo.empresas e    ON e.id = p.empresa_id
+      FROM public.camiones c
+      INNER JOIN public.proveedores p ON p.id = c.proveedor_id
+      INNER JOIN public.empresas e    ON e.id = p.empresa_id
 
       -- Busca la última inspección activa ('PROGRAMADA')
-      OUTER APPLY (
-        SELECT TOP 1 i.id, i.fecha_programada, i.inspector_id
-        FROM dbo.inspecciones i
+      LEFT JOIN LATERAL (
+        SELECT i.id, i.fecha_programada, i.inspector_id
+        FROM public.inspecciones i
         WHERE i.camion_id = c.id
           AND i.estado = 'PROGRAMADA'
-        ORDER BY i.fecha_programada DESC
-      ) ip
+        ORDER BY i.fecha_programada DESC LIMIT 1
+      ) ip ON TRUE
 
-      LEFT JOIN dbo.usuarios u ON u.id = ip.inspector_id
+      LEFT JOIN public.usuarios u ON u.id = ip.inspector_id
 
       ${whereConditions.length ? "WHERE " + whereConditions.join(" AND ") : ""}
-      
-      ORDER BY 
+
+      ORDER BY
         CASE WHEN ip.fecha_programada IS NOT NULL THEN ip.fecha_programada ELSE c.created_at END DESC
     `;
 
     const result = await request.query(query);
 
-    // 6. Formateo de respuesta
-    const now = new Date();
-    
     const camiones = result.recordset.map((row: any) => {
-      let ui_estado = "SIN_AGENDA";
-      const fechaProg = row.fecha_programada ? new Date(row.fecha_programada) : null;
-
-      if (fechaProg) {
-        const hoy = new Date();
-        // Comparar por fecha local (no por hora) para no marcar vencida el mismo día
-        const fechaSolo = new Date(fechaProg.getFullYear(), fechaProg.getMonth(), fechaProg.getDate());
-        const hoySolo = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
-        ui_estado = fechaSolo >= hoySolo ? "PROGRAMADA" : "VENCIDA";
-      }
-
+      const ui_estado = row.ui_estado;
       return {
         id: row.camion_id,
         patente: row.patente,
@@ -128,7 +117,7 @@ export async function GET(req: NextRequest) {
           rut: row.empresa_rut,
         },
 
-        ui_estado, 
+        ui_estado,
 
         inspeccionProgramada: row.inspeccion_id
           ? {
@@ -159,7 +148,7 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ ok: false, error: "No autorizado" }, { status: 401 });
 
     const body = await req.json();
-    
+
     // 1. Validar datos
     const parsed = CreateAgendaSchema.safeParse(body);
     if (!parsed.success) {
@@ -169,8 +158,8 @@ export async function POST(req: NextRequest) {
     const { camionId, inspectorId, fechaProgramada, observaciones } = parsed.data;
 
     const pool = await getPool();
-    const trans = new sql.Transaction(pool);
-    
+    const trans = new Transaction(pool);
+
     try {
       await trans.begin();
       const reqTrans = trans.request();
@@ -178,27 +167,24 @@ export async function POST(req: NextRequest) {
       // 2. Verificar duplicados
       const check = await reqTrans
         .input("checkCamionId", camionId)
-        .query("SELECT TOP 1 id FROM dbo.inspecciones WHERE camion_id = @checkCamionId AND estado = 'PROGRAMADA'");
-      
+        .query("SELECT id FROM public.inspecciones WHERE camion_id = @checkCamionId AND estado = 'PROGRAMADA' LIMIT 1");
+
       if (check.recordset.length > 0) {
         await trans.rollback();
         return NextResponse.json({ ok: false, error: "El camión ya tiene una inspección programada activa." }, { status: 400 });
       }
 
       // 3. Insertar Inspección
-      // NOTA: 'fecha_inspeccion' es obligatorio en tu BD.
-      // Lo rellenamos con la misma fecha programada para cumplir la regla,
-      // pero el resultado 'PENDIENTE' indica que aún no se ha hecho.
       await reqTrans
         .input("camionId", camionId)
         .input("inspectorId", inspectorId ?? null)
-        .input("fechaProgramada", new Date(fechaProgramada))
+        .input("fechaProgramada", fechaProgramada)
         .input("obs", observaciones ?? null)
         .query(`
-          INSERT INTO dbo.inspecciones 
+          INSERT INTO public.inspecciones
             (camion_id, inspector_id, fecha_programada, fecha_inspeccion, estado, resultado_general, observaciones_generales)
-          VALUES 
-            (@camionId, @inspectorId, @fechaProgramada, @fechaProgramada, 'PROGRAMADA', 'PENDIENTE', @obs)
+          VALUES
+            (@camionId, @inspectorId, (CAST(@fechaProgramada AS timestamp) AT TIME ZONE 'America/Santiago'), NULL, 'PROGRAMADA', 'PENDIENTE', @obs)
         `);
 
       await trans.commit();

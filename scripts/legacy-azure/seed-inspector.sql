@@ -16,7 +16,7 @@ BEGIN
         1,
         GETDATE()
     );
-    
+
     PRINT '✅ Inspector de prueba creado: inspector@petran.cl (contraseña: 123456)';
 END
 ELSE
